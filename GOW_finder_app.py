@@ -136,11 +136,25 @@ if uploaded_file:
             companies = companies[:5]
             st.warning("🧪 Test Mode: Processing only first 5 companies")
 
+        # Custom loading spinner in main area
+        loading_placeholder = st.empty()
+        loading_placeholder.markdown(
+            """
+            <div style='display: flex; align-items: center; gap: 0.5em;'>
+                <span style='font-size:2em;'>⏳</span>
+                <span style='font-size:1.2em;'>Labeling companies, please wait...</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
         for i, company in enumerate(companies):
             with st.spinner(f"Labeling {company}..."):
                 result_map[company] = label_company(company)
                 progress.progress((i + 1) / len(companies))
-                time.sleep(1.1)  # avoid hitting rate limits
+                time.sleep(1.1)
+
+        loading_placeholder.empty()  # Remove the custom spinner when done
 
         # Attach results to DataFrame
         df["Industry"] = df["Company"].map(lambda x: result_map.get(x, {}).get("industry", ""))
