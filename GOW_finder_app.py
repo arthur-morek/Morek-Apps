@@ -4,6 +4,7 @@ import pdfplumber
 import openai
 import json
 import time
+import altair as alt
 
 # --- Settings ---
 st.title("📄 GOW 2025 Delegate Extractor + GPT Company Classifier")
@@ -13,7 +14,7 @@ offerings_list = [
     "temporary mooring design",
     "detailed mooring design",
     "pre-FEED mooring and dynamic cable design",
-    "seafastening",
+    "seafastening",#
     "marine operations planning"
 ]
 
@@ -176,14 +177,126 @@ if uploaded_file:
         df["Potential Partner"] = df["Company"].map(lambda x: result_map.get(x, {}).get("potential_partner", False))
         df["Partner Reasoning"] = df["Company"].map(lambda x: result_map.get(x, {}).get("partner_reasoning", ""))
         df["Known Partners"] = df["Company"].map(lambda x: ", ".join(result_map.get(x, {}).get("known_partners", [])))
-        df["Similar to Morek"] = df["Company"].map(lambda x: ", ".join(result_map.get(x, {}).get("similar_to_morek", [])))
+        df["Similar to Morek"] = df["Company"].map(
+            lambda x: ", ".join([
+                c for c in result_map.get(x, {}).get("similar_to_morek", [])
+                if c.strip().lower() != "morek engineering"
+            ])
+        )
         df["Relevant Offerings"] = df["Company"].map(
             lambda x: ", ".join(result_map.get(x, {}).get("relevant_offerings", []))
         )
         df["Reasoning"] = df["Company"].map(lambda x: result_map.get(x, {}).get("reasoning", ""))
 
+        # Add a filter to show only potential partners
+        show_partners = st.checkbox("Show only potential partners", value=False)
+        display_df = df[df["Potential Partner"]] if show_partners else df
+
+        # Color highlight for 'Potential Partner'
+        def highlight_partner(val):
+            if val is True or val == True or str(val).lower() == "true":
+                return 'background-color: #d4f7d4; font-weight: bold;'
+            return ''
+
         st.success("✅ Labeling complete.")
-        st.dataframe(df)
+        st.dataframe(
+            display_df.style.applymap(highlight_partner, subset=["Potential Partner"]),
+            use_container_width=True
+        )
+
+    # --- Visualization Tabs ---
+    tab1, tab2, tab3 = st.tabs(["Summary Graphs", "Company Cards", "Full Table"])
+
+    # --- Summary Graphs ---
+    with tab1:
+        st.header("Summary Graphs")
+        # Industry distribution
+        if not display_df.empty:
+            st.subheader("Companies by Industry")
+            industry_counts = display_df["Industry"].value_counts().reset_index()
+            industry_counts.columns = ["Industry", "Count"]
+            st.altair_chart(
+                alt.Chart(industry_counts).mark_bar().encode(
+                    x=alt.X("Industry", sort="-y"),
+                    y="Count",
+                    tooltip=["Industry", "Count"]
+                ).properties(height=300),
+                use_container_width=True
+            )
+
+            st.subheader("Companies by Size")
+            size_counts = display_df["Company Size"].value_counts().reset_index()
+            size_counts.columns = ["Company Size", "Count"]
+            st.altair_chart(
+                alt.Chart(size_counts).mark_bar().encode(
+                    x=alt.X("Company Size", sort="-y"),
+                    y="Count",
+                    tooltip=["Company Size", "Count"]
+                ).properties(height=200),
+                use_container_width=True
+            )
+
+            st.subheader("Potential Partners Distribution")
+            partner_counts = display_df["Potential Partner"].value_counts().reset_index()
+            partner_counts.columns = ["Potential Partner", "Count"]
+            st.altair_chart(
+                alt.Chart(partner_counts).mark_arc(innerRadius=40).encode(
+                    theta="Count",
+                    color="Potential Partner",
+                    tooltip=["Potential Partner", "Count"]
+                ).properties(height=200),
+                use_container_width=True
+            )
+
+            st.subheader("Most Common Relevant Offerings")
+            offerings_series = display_df["Relevant Offerings"].str.split(", ").explode()
+            offerings_counts = offerings_series.value_counts().reset_index()
+            offerings_counts.columns = ["Offering", "Count"]
+            st.altair_chart(
+                alt.Chart(offerings_counts).mark_bar().encode(
+                    x=alt.X("Offering", sort="-y"),
+                    y="Count",
+                    tooltip=["Offering", "Count"]
+                ).properties(height=200),
+                use_container_width=True
+            )
+        else:
+            st.info("No data to display.")
+
+    # --- Company Cards ---
+    with tab2:
+        st.header("Company Cards")
+        if not display_df.empty:
+            for i in range(0, len(display_df), 3):
+                cols = st.columns(3)
+                for j, (_, row) in enumerate(display_df.iloc[i:i+3].iterrows()):
+                    with cols[j]:
+                        st.markdown(f"""
+                            <div style='border:1px solid #ddd; border-radius:10px; padding:1em; margin-bottom:1em; background-color:{'#d4f7d4' if row['Potential Partner'] else '#fff'};'>
+                                <h4>{row['Company']}</h4>
+                                <b>Industry:</b> {row['Industry']}<br>
+                                <b>Type:</b> {row['Company Type']}<br>
+                                <b>Size:</b> {row['Company Size']}<br>
+                                <b>Age:</b> {row['Company Age']}<br>
+                                <b>Business Model:</b> {row['Business Model']}<br>
+                                <b>Potential Partner:</b> {'✅' if row['Potential Partner'] else '❌'}<br>
+                                <b>Relevant Offerings:</b> {row['Relevant Offerings']}<br>
+                                <b>Known Partners:</b> {row['Known Partners']}<br>
+                                <b>Similar to Morek:</b> {row['Similar to Morek']}<br>
+                                <details><summary><b>Reasoning</b></summary>{row['Reasoning']}</details>
+                                <details><summary><b>Partner Reasoning</b></summary>{row['Partner Reasoning']}</details>
+                            </div>
+                        """, unsafe_allow_html=True)
+        else:
+            st.info("No data to display.")
+
+    # --- Full Table ---
+    with tab3:
+        st.header("Full Table")
+        st.dataframe(
+            display_df.style.applymap(highlight_partner, subset=["Potential Partner"]),
+            use_container_width=True
+        )
 
     # --- Search ---
     search_term = st.text_input("🔍 Search by name, job title, company, or offering:")
