@@ -332,10 +332,13 @@ if uploaded_file:
     # --- Full Table ---
     with tab3:
         st.header("Full Table")
-        st.dataframe(
-            display_df.style.applymap(highlight_partner, subset=["Potential Partner"]),
-            use_container_width=True
-        )
+        if "Potential Partner" in display_df.columns:
+            st.dataframe(
+                display_df.style.applymap(highlight_partner, subset=["Potential Partner"]),
+                use_container_width=True
+            )
+        else:
+            st.dataframe(display_df, use_container_width=True)
 
     # --- Search ---
     search_term = st.text_input("🔍 Search by name, job title, company, or offering:")
