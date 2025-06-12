@@ -30,6 +30,10 @@ Return a JSON object with the following keys:
     "industry": "The company's primary industry sector (e.g., 'Offshore Wind', 'Marine Transportation', 'Port Operations', 'Marine Engineering', 'Energy', 'Construction', etc.)",
     "company_type": "The company's role in the industry (e.g., 'Developer', 'OEM', 'Engineering Consultant', 'Port Authority', 'Contractor', 'Operator', 'Manufacturer', etc.)",
     "business_model": "The company's business model (e.g., 'Project Developer', 'Service Provider', 'Equipment Manufacturer', 'Consultancy', etc.)",
+    "company_size": "Estimated company size (e.g., '1-10', '11-50', '51-200', '201+', 'Unknown'). If you have no information, use 'Unknown'.",
+    "company_age": "Estimated company age or maturity (e.g., 'Startup', 'Young', 'Established', 'Unknown').",
+    "potential_partner": "true if this company is likely a good small/young partner for a small consultancy (<5 people), otherwise false.",
+    "partner_reasoning": "A short explanation for your potential_partner assessment.",
     "relevant_offerings": ["List of relevant services from: {', '.join(offerings_list)} that could be of use to this company from a third party"],
     "reasoning": "A short explanation of why these offerings are relevant to this company."
 }}
@@ -37,6 +41,7 @@ Return a JSON object with the following keys:
 Guidelines:
 - Only include offerings that would be genuinely relevant to this type of company
 - If uncertain about any field, use 'Unknown' rather than guessing
+- If the company seems small, new, or a potential partner, set potential_partner to true and explain why
 - Ensure the response is valid JSON
 - Respond with JSON only
 """
@@ -53,7 +58,10 @@ Guidelines:
         )
         result = json.loads(response.choices[0].message.content)
         # Validate the response structure
-        required_keys = ["industry", "company_type", "business_model", "relevant_offerings", "reasoning"]
+        required_keys = [
+            "industry", "company_type", "business_model", "company_size", "company_age",
+            "potential_partner", "partner_reasoning", "relevant_offerings", "reasoning"
+        ]
         if not all(key in result for key in required_keys):
             raise ValueError("Missing required keys in response")
         if not isinstance(result["relevant_offerings"], list):
@@ -69,6 +77,10 @@ Guidelines:
             "industry": "Error",
             "company_type": "Error",
             "business_model": "Error",
+            "company_size": "Error",
+            "company_age": "Error",
+            "potential_partner": False,
+            "partner_reasoning": str(e),
             "relevant_offerings": [],
             "reasoning": str(e)
         }
@@ -134,6 +146,10 @@ if uploaded_file:
         df["Industry"] = df["Company"].map(lambda x: result_map.get(x, {}).get("industry", ""))
         df["Company Type"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_type", ""))
         df["Business Model"] = df["Company"].map(lambda x: result_map.get(x, {}).get("business_model", ""))
+        df["Company Size"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_size", ""))
+        df["Company Age"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_age", ""))
+        df["Potential Partner"] = df["Company"].map(lambda x: result_map.get(x, {}).get("potential_partner", False))
+        df["Partner Reasoning"] = df["Company"].map(lambda x: result_map.get(x, {}).get("partner_reasoning", ""))
         df["Relevant Offerings"] = df["Company"].map(
             lambda x: ", ".join(result_map.get(x, {}).get("relevant_offerings", []))
         )
