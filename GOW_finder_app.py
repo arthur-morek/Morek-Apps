@@ -65,7 +65,10 @@ st.markdown(
 # --- Morek Logo Header ---
 col1, col2 = st.columns([1, 6])
 with col1:
-    st.image("morek_logo.jpg", use_column_width=True, output_format="auto")
+    st.image(
+        "https://www.morek.co.uk/wp-content/uploads/2021/03/morek-logo.svg",
+        use_container_width=True
+    )
 with col2:
     st.markdown("<span style='font-size:2.2em; font-weight: bold; color: #ffd600;'>COMPANY SEARCH ENGINE</span>", unsafe_allow_html=True)
 
