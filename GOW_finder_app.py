@@ -83,11 +83,17 @@ if uploaded_file:
     st.dataframe(df)
 
     # --- GPT Classification ---
+    test_mode = st.toggle("🧪 Test Mode (Process only first 5 companies)", value=True)
+    
     if st.button("🔍 Classify Companies with GPT"):
         st.info("Calling GPT to classify each unique company...")
         progress = st.progress(0)
         result_map = {}
         companies = df["Company"].unique()
+        
+        if test_mode:
+            companies = companies[:5]
+            st.warning("🧪 Test Mode: Processing only first 5 companies")
 
         for i, company in enumerate(companies):
             result_map[company] = classify_company(company)
@@ -95,10 +101,10 @@ if uploaded_file:
             time.sleep(1.1)  # avoid hitting rate limits
 
         # Attach results to DataFrame
-        df["Main Sector"] = df["Company"].map(lambda x: result_map[x].get("main_sector", ""))
-        df["Company Type"] = df["Company"].map(lambda x: result_map[x].get("company_type", ""))
+        df["Main Sector"] = df["Company"].map(lambda x: result_map.get(x, {}).get("main_sector", ""))
+        df["Company Type"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_type", ""))
         df["Relevant Offerings"] = df["Company"].map(
-            lambda x: ", ".join(result_map[x].get("relevant_offerings", []))
+            lambda x: ", ".join(result_map.get(x, {}).get("relevant_offerings", []))
         )
 
         st.success("✅ Classification complete.")
