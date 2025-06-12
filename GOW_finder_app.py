@@ -281,30 +281,36 @@ if uploaded_file:
             unsafe_allow_html=True
         )
 
-        # Use cached results for already labeled companies
-        for i, company in enumerate(to_label):
-            with st.spinner(f"Labeling {company}..."):
-                result_map[company] = label_company_cached(company)
-                progress.progress((i + 1) / max(1, len(to_label)))
+        # Batch processing
+        batch_size = 10
+        total = len(to_label)
+        new_labeled = []
+        for batch_start in range(0, total, batch_size):
+            batch = to_label[batch_start:batch_start+batch_size]
+            for i, company in enumerate(batch):
+                try:
+                    with st.spinner(f"Labeling {company}..."):
+                        result = label_company_cached(company)
+                        result_map[company] = result
+                        res = result.copy()
+                        res["Company"] = company
+                        new_labeled.append(res)
+                except Exception as e:
+                    st.error(f"Failed to label {company}: {e}")
+                progress.progress(min(1.0, (batch_start + i + 1) / max(1, total)))
                 time.sleep(1.1)
+            # Save progress after each batch
+            pd.DataFrame(new_labeled).to_csv(CACHE_PATH, index=False)
 
         loading_placeholder.empty()  # Remove the custom spinner when done
 
-        # Build new labeled DataFrame
-        new_labeled = []
-        for company in to_label:
-            res = result_map.get(company, {})
-            res["Company"] = company
-            new_labeled.append(res)
-        new_labeled_df = pd.DataFrame(new_labeled)
-
         # Combine with cached
         if not cached_df.empty:
-            labeled_df = pd.concat([cached_df, new_labeled_df], ignore_index=True)
+            labeled_df = pd.concat([cached_df, pd.DataFrame(new_labeled)], ignore_index=True)
         else:
-            labeled_df = new_labeled_df
+            labeled_df = pd.DataFrame(new_labeled)
 
-        # Save to disk
+        # Save to disk (final save)
         labeled_df.to_csv(CACHE_PATH, index=False)
 
         # Merge with main df for display
@@ -330,11 +336,11 @@ if uploaded_file:
         )
         df["Reasoning"] = df["Company"].map(lambda x: result_map.get(x, {}).get("reasoning", ""))
 
-        # Add a filter to show only potential partners
-        show_partners = st.checkbox("Show only potential partners", value=False)
-        display_df = df[df["Potential Partner"]] if show_partners else df
+        if len(new_labeled) < total:
+            st.warning(f"Labeling incomplete: {len(new_labeled)} of {total} companies processed. You can rerun to continue.")
+        else:
+            st.success("✅ Labeling complete.")
 
-        st.success("✅ Labeling complete.")
         st.dataframe(
             display_df.style.applymap(highlight_partner, subset=["Potential Partner"]),
             use_container_width=True
