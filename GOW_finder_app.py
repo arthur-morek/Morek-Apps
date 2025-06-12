@@ -146,7 +146,18 @@ if uploaded_file:
 
     df = pd.DataFrame(rows, columns=["First Name", "Last Name", "Job Title", "Company"])
     st.success(f"✅ Extracted {len(df)} delegates.")
-    st.dataframe(df)
+    # --- Search ---
+    search_term = st.text_input("🔍 Search by name, job title, company, or offering:")
+    if search_term:
+        # Create a mask for each column and combine them
+        mask = pd.Series(False, index=df.index)
+        for column in df.columns:
+            mask |= df[column].astype(str).str.contains(search_term, case=False, na=False)
+        filtered = df[mask]
+        st.write(f"🔎 Found {len(filtered)} result(s):")
+        st.dataframe(filtered)
+    else:
+        st.dataframe(df)
 
     # Try to load cached results
     if os.path.exists(CACHE_PATH):
@@ -339,18 +350,6 @@ if uploaded_file:
             )
         else:
             st.dataframe(display_df, use_container_width=True)
-
-    # --- Search ---
-    search_term = st.text_input("🔍 Search by name, job title, company, or offering:")
-    if search_term:
-        # Create a mask for each column and combine them
-        mask = pd.Series(False, index=df.index)
-        for column in df.columns:
-            mask |= df[column].astype(str).str.contains(search_term, case=False, na=False)
-        
-        filtered = df[mask]
-        st.write(f"🔎 Found {len(filtered)} result(s):")
-        st.dataframe(filtered)
 
     # --- Download ---
     st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="gow2025_delegates_classified.csv")
