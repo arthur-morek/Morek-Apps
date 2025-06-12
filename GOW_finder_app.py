@@ -54,17 +54,39 @@ st.markdown(
         font-family: 'Segoe UI', 'Arial', sans-serif !important;
     }
     .morek-logo {
-        width: 180px;
+        width: 220px;
         margin-bottom: 1em;
     }
     </style>
-    <div style='display: flex; align-items: center; gap: 1em;'>
-        <img src='https://www.morek.co.uk/wp-content/uploads/2021/03/morek-logo.svg' class='morek-logo' alt='Morek Engineering Logo'>
-        <span style='font-size:2.2em; font-weight: bold; color: #ffd600;'>MOREK DEEP SEARCH ENGINE</span>
-    </div>
     """,
     unsafe_allow_html=True
 )
+
+# --- Morek Logo Header ---
+col1, col2 = st.columns([1, 6])
+with col1:
+    st.image("morek_logo.jpg", use_column_width=True, output_format="auto")
+with col2:
+    st.markdown("<span style='font-size:2.2em; font-weight: bold; color: #ffd600;'>COMPANY SEARCH ENGINE</span>", unsafe_allow_html=True)
+
+# --- Login ---
+if 'authenticated' not in st.session_state:
+    st.session_state['authenticated'] = False
+
+if not st.session_state['authenticated']:
+    with st.form("login_form"):
+        st.markdown("## Login Required")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+        if submitted:
+            if username == "Morekian" and password == "Morek2025!":
+                st.session_state['authenticated'] = True
+                st.success("Login successful!")
+                st.experimental_rerun()
+            else:
+                st.error("Incorrect username or password.")
+    st.stop()
 
 # --- Settings ---
 st.title("📄 COMPANY SEARCH ENGINE")
