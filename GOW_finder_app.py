@@ -5,6 +5,7 @@ import openai
 import json
 import time
 import altair as alt
+import os
 
 # --- Settings ---
 st.title("📄 GOW 2025 Delegate Extractor + GPT Company Classifier")
@@ -97,9 +98,14 @@ Guidelines:
             "reasoning": str(e)
         }
 
+@st.cache_data(show_spinner=False)
+def label_company_cached(company_name):
+    return label_company(company_name)
+
 # --- File Upload ---
 uploaded_file = st.file_uploader("📎 Upload Delegate List PDF", type=["pdf"])
 
+CACHE_PATH = "gow2025_labeled_companies.csv"
 display_df = pd.DataFrame()  # Safe default
 
 def highlight_partner(val):
@@ -142,7 +148,14 @@ if uploaded_file:
     st.success(f"✅ Extracted {len(df)} delegates.")
     st.dataframe(df)
 
-    # --- GPT Labeling ---
+    # Try to load cached results
+    if os.path.exists(CACHE_PATH):
+        cached_df = pd.read_csv(CACHE_PATH)
+        # Merge on Company
+        df = df.merge(cached_df, on="Company", how="left", suffixes=("", "_cached"))
+    else:
+        cached_df = pd.DataFrame()
+
     test_mode = st.toggle("🧪 Test Mode (Process only first 5 companies)", value=True)
     
     if st.button("🔍 Label Companies with GPT"):
@@ -154,6 +167,10 @@ if uploaded_file:
         if test_mode:
             companies = companies[:5]
             st.warning("🧪 Test Mode: Processing only first 5 companies")
+
+        # Only process companies not already labeled
+        already_labeled = set(cached_df["Company"]) if not cached_df.empty else set()
+        to_label = [c for c in companies if c not in already_labeled]
 
         # Custom loading spinner in main area
         loading_placeholder = st.empty()
@@ -167,13 +184,34 @@ if uploaded_file:
             unsafe_allow_html=True
         )
 
-        for i, company in enumerate(companies):
+        # Use cached results for already labeled companies
+        for i, company in enumerate(to_label):
             with st.spinner(f"Labeling {company}..."):
-                result_map[company] = label_company(company)
-                progress.progress((i + 1) / len(companies))
+                result_map[company] = label_company_cached(company)
+                progress.progress((i + 1) / max(1, len(to_label)))
                 time.sleep(1.1)
 
         loading_placeholder.empty()  # Remove the custom spinner when done
+
+        # Build new labeled DataFrame
+        new_labeled = []
+        for company in to_label:
+            res = result_map.get(company, {})
+            res["Company"] = company
+            new_labeled.append(res)
+        new_labeled_df = pd.DataFrame(new_labeled)
+
+        # Combine with cached
+        if not cached_df.empty:
+            labeled_df = pd.concat([cached_df, new_labeled_df], ignore_index=True)
+        else:
+            labeled_df = new_labeled_df
+
+        # Save to disk
+        labeled_df.to_csv(CACHE_PATH, index=False)
+
+        # Merge with main df for display
+        df = df.merge(labeled_df, on="Company", how="left", suffixes=("", "_labeled"))
 
         # Attach results to DataFrame
         df["Industry"] = df["Company"].map(lambda x: result_map.get(x, {}).get("industry", ""))
