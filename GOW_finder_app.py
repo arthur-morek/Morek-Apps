@@ -26,7 +26,7 @@ You are helping a marine engineering consultancy understand prospective clients.
 Classify this company: "{company_name}"
 
 Return JSON with keys:
-- main_sector: the company’s core focus or industry
+- main_sector: the company's core focus or industry
 - company_type: e.g. developer, OEM, engineering consultant, port, contractor, etc.
 - relevant_offerings: a list of the offerings below that could be relevant
 
@@ -107,7 +107,12 @@ if uploaded_file:
     # --- Search ---
     search_term = st.text_input("🔍 Search by name, job title, company, or offering:")
     if search_term:
-        filtered = df[df.apply(lambda row: row.astype(str).str.contains(search_term, case=False).any(), axis=1)]
+        # Create a mask for each column and combine them
+        mask = pd.Series(False, index=df.index)
+        for column in df.columns:
+            mask |= df[column].astype(str).str.contains(search_term, case=False, na=False)
+        
+        filtered = df[mask]
         st.write(f"🔎 Found {len(filtered)} result(s):")
         st.dataframe(filtered)
 
