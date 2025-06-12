@@ -19,30 +19,59 @@ offerings_list = [
 
 client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
 
-def classify_company(company_name):
+def label_company(company_name):
     prompt = f"""
-You are helping a marine engineering consultancy understand prospective clients.
+You are an expert marine engineering consultant. Your task is to label companies based on their name and your knowledge of the marine and offshore industries.
 
-Classify this company: "{company_name}"
+For the company: "{company_name}"
 
-Return JSON with keys:
-- main_sector: the company's core focus or industry
-- company_type: e.g. developer, OEM, engineering consultant, port, contractor, etc.
-- relevant_offerings: a list of the offerings below that could be relevant
+Return a JSON object with the following keys:
+{{
+    "industry": "The company's primary industry sector (e.g., 'Offshore Wind', 'Marine Transportation', 'Port Operations', 'Marine Engineering', 'Energy', 'Construction', etc.)",
+    "company_type": "The company's role in the industry (e.g., 'Developer', 'OEM', 'Engineering Consultant', 'Port Authority', 'Contractor', 'Operator', 'Manufacturer', etc.)",
+    "business_model": "The company's business model (e.g., 'Project Developer', 'Service Provider', 'Equipment Manufacturer', 'Consultancy', etc.)",
+    "relevant_offerings": ["List of relevant services from: {', '.join(offerings_list)} that could be of use to this company from a third party"],
+    "reasoning": "A short explanation of why these offerings are relevant to this company."
+}}
 
-Offerings: {offerings_list}
-
-Respond in JSON only.
+Guidelines:
+- Only include offerings that would be genuinely relevant to this type of company
+- If uncertain about any field, use 'Unknown' rather than guessing
+- Ensure the response is valid JSON
+- Respond with JSON only
 """
     try:
+        print(prompt)
         response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[{"role": "user", "content": prompt.strip()}],
-            temperature=0,
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": "You are a precise and accurate marine engineering industry labeler. Always respond with valid JSON."},
+                {"role": "user", "content": prompt.strip()}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"}
         )
-        return json.loads(response.choices[0].message.content)
+        result = json.loads(response.choices[0].message.content)
+        # Validate the response structure
+        required_keys = ["industry", "company_type", "business_model", "relevant_offerings", "reasoning"]
+        if not all(key in result for key in required_keys):
+            raise ValueError("Missing required keys in response")
+        if not isinstance(result["relevant_offerings"], list):
+            result["relevant_offerings"] = []
+        result["relevant_offerings"] = [
+            offering for offering in result["relevant_offerings"]
+            if offering in offerings_list
+        ]
+        return result
     except Exception as e:
-        return {"main_sector": "", "company_type": "", "relevant_offerings": [], "error": str(e)}
+        st.error(f"Error labeling {company_name}: {str(e)}")
+        return {
+            "industry": "Error",
+            "company_type": "Error",
+            "business_model": "Error",
+            "relevant_offerings": [],
+            "reasoning": str(e)
+        }
 
 # --- File Upload ---
 uploaded_file = st.file_uploader("📎 Upload Delegate List PDF", type=["pdf"])
@@ -82,11 +111,11 @@ if uploaded_file:
     st.success(f"✅ Extracted {len(df)} delegates.")
     st.dataframe(df)
 
-    # --- GPT Classification ---
+    # --- GPT Labeling ---
     test_mode = st.toggle("🧪 Test Mode (Process only first 5 companies)", value=True)
     
-    if st.button("🔍 Classify Companies with GPT"):
-        st.info("Calling GPT to classify each unique company...")
+    if st.button("🔍 Label Companies with GPT"):
+        st.info("Calling GPT to label each unique company...")
         progress = st.progress(0)
         result_map = {}
         companies = df["Company"].unique()
@@ -96,18 +125,21 @@ if uploaded_file:
             st.warning("🧪 Test Mode: Processing only first 5 companies")
 
         for i, company in enumerate(companies):
-            result_map[company] = classify_company(company)
-            progress.progress((i + 1) / len(companies))
-            time.sleep(1.1)  # avoid hitting rate limits
+            with st.spinner(f"Labeling {company}..."):
+                result_map[company] = label_company(company)
+                progress.progress((i + 1) / len(companies))
+                time.sleep(1.1)  # avoid hitting rate limits
 
         # Attach results to DataFrame
-        df["Main Sector"] = df["Company"].map(lambda x: result_map.get(x, {}).get("main_sector", ""))
+        df["Industry"] = df["Company"].map(lambda x: result_map.get(x, {}).get("industry", ""))
         df["Company Type"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_type", ""))
+        df["Business Model"] = df["Company"].map(lambda x: result_map.get(x, {}).get("business_model", ""))
         df["Relevant Offerings"] = df["Company"].map(
             lambda x: ", ".join(result_map.get(x, {}).get("relevant_offerings", []))
         )
+        df["Reasoning"] = df["Company"].map(lambda x: result_map.get(x, {}).get("reasoning", ""))
 
-        st.success("✅ Classification complete.")
+        st.success("✅ Labeling complete.")
         st.dataframe(df)
 
     # --- Search ---
