@@ -34,6 +34,8 @@ Return a JSON object with the following keys:
     "company_age": "Estimated company age or maturity (e.g., 'Startup', 'Young', 'Established', 'Unknown').",
     "potential_partner": "true if this company is likely a good small/young partner for a small consultancy (<5 people), otherwise false.",
     "partner_reasoning": "A short explanation for your potential_partner assessment.",
+    "known_partners": ["List of known or likely partner companies, if any are public or can be inferred. If unknown, return an empty list."],
+    "similar_to_morek": ["List of companies that are similar to Morek Engineering, if any. If unknown, return an empty list."],
     "relevant_offerings": ["List of relevant services from: {', '.join(offerings_list)} that could be of use to this company from a third party"],
     "reasoning": "A short explanation of why these offerings are relevant to this company."
 }}
@@ -42,6 +44,8 @@ Guidelines:
 - Only include offerings that would be genuinely relevant to this type of company
 - If uncertain about any field, use 'Unknown' rather than guessing
 - If the company seems small, new, or a potential partner, set potential_partner to true and explain why
+- If you know or can infer any partners, list them in known_partners
+- If you know or can infer any companies similar to Morek Engineering, list them in similar_to_morek
 - Ensure the response is valid JSON
 - Respond with JSON only
 """
@@ -60,7 +64,8 @@ Guidelines:
         # Validate the response structure
         required_keys = [
             "industry", "company_type", "business_model", "company_size", "company_age",
-            "potential_partner", "partner_reasoning", "relevant_offerings", "reasoning"
+            "potential_partner", "partner_reasoning", "known_partners", "similar_to_morek",
+            "relevant_offerings", "reasoning"
         ]
         if not all(key in result for key in required_keys):
             raise ValueError("Missing required keys in response")
@@ -70,6 +75,10 @@ Guidelines:
             offering for offering in result["relevant_offerings"]
             if offering in offerings_list
         ]
+        if not isinstance(result["known_partners"], list):
+            result["known_partners"] = []
+        if not isinstance(result["similar_to_morek"], list):
+            result["similar_to_morek"] = []
         return result
     except Exception as e:
         st.error(f"Error labeling {company_name}: {str(e)}")
@@ -81,6 +90,8 @@ Guidelines:
             "company_age": "Error",
             "potential_partner": False,
             "partner_reasoning": str(e),
+            "known_partners": [],
+            "similar_to_morek": [],
             "relevant_offerings": [],
             "reasoning": str(e)
         }
@@ -164,6 +175,8 @@ if uploaded_file:
         df["Company Age"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_age", ""))
         df["Potential Partner"] = df["Company"].map(lambda x: result_map.get(x, {}).get("potential_partner", False))
         df["Partner Reasoning"] = df["Company"].map(lambda x: result_map.get(x, {}).get("partner_reasoning", ""))
+        df["Known Partners"] = df["Company"].map(lambda x: ", ".join(result_map.get(x, {}).get("known_partners", [])))
+        df["Similar to Morek"] = df["Company"].map(lambda x: ", ".join(result_map.get(x, {}).get("similar_to_morek", [])))
         df["Relevant Offerings"] = df["Company"].map(
             lambda x: ", ".join(result_map.get(x, {}).get("relevant_offerings", []))
         )
