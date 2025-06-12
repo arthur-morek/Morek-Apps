@@ -7,8 +7,67 @@ import time
 import altair as alt
 import os
 
+# --- Morek Branding ---
+st.markdown(
+    """
+    <style>
+    body {
+        background-color: #002b45 !important;
+        color: #ffffff !important;
+        font-family: 'Segoe UI', 'Arial', sans-serif !important;
+    }
+    .stApp {
+        background-color: #002b45 !important;
+    }
+    .st-bb, .st-c3, .st-c6, .st-cg, .st-ch, .st-ci, .st-cj, .st-ck, .st-cl, .st-cm, .st-cn, .st-co, .st-cp, .st-cq, .st-cr, .st-cs, .st-ct, .st-cu, .st-cv, .st-cw, .st-cx, .st-cy, .st-cz {
+        color: #ffffff !important;
+    }
+    .stButton>button {
+        background-color: #ffd600 !important;
+        color: #002b45 !important;
+        font-weight: bold;
+        border-radius: 8px;
+        border: none;
+        padding: 0.5em 1.2em;
+    }
+    .stTextInput>div>div>input {
+        background-color: #e6f2fa !important;
+        color: #002b45 !important;
+        border-radius: 6px;
+    }
+    .stDataFrame, .stTable {
+        background-color: #e6f2fa !important;
+        color: #002b45 !important;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: #00395c !important;
+        color: #ffd600 !important;
+        font-weight: bold;
+        border-radius: 8px 8px 0 0;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #ffd600 !important;
+        color: #002b45 !important;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color: #ffd600 !important;
+        font-family: 'Segoe UI', 'Arial', sans-serif !important;
+    }
+    .morek-logo {
+        width: 180px;
+        margin-bottom: 1em;
+    }
+    </style>
+    <div style='display: flex; align-items: center; gap: 1em;'>
+        <img src='https://www.morek.co.uk/wp-content/uploads/2021/03/morek-logo.svg' class='morek-logo' alt='Morek Engineering Logo'>
+        <span style='font-size:2.2em; font-weight: bold; color: #ffd600;'>MOREK DEEP SEARCH ENGINE</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- Settings ---
-st.title("📄 GOW 2025 Delegate Extractor + GPT Company Classifier")
+st.title("📄 COMPANY SEARCH ENGINE")
 
 offerings_list = [
     "naval architecture support",
@@ -147,7 +206,7 @@ if uploaded_file:
     df = pd.DataFrame(rows, columns=["First Name", "Last Name", "Job Title", "Company"])
     st.success(f"✅ Extracted {len(df)} delegates.")
     # --- Search ---
-    search_term = st.text_input("🔍 Search by name, job title, company, or offering:")
+    search_term = st.text_input("🔍 Search by name, job title, company:")
     if search_term:
         # Create a mask for each column and combine them
         mask = pd.Series(False, index=df.index)
