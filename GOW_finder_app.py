@@ -6,21 +6,22 @@ import json
 import time
 import altair as alt
 import os
+import pathlib
 
 # --- Morek Branding ---
 st.markdown(
     """
     <style>
     body {
-        background-color: #002b45 !important;
-        color: #ffffff !important;
+        background-color: #fff !important;
+        color: #002b45 !important;
         font-family: 'Segoe UI', 'Arial', sans-serif !important;
     }
     .stApp {
-        background-color: #002b45 !important;
+        background-color: #fff !important;
     }
     .st-bb, .st-c3, .st-c6, .st-cg, .st-ch, .st-ci, .st-cj, .st-ck, .st-cl, .st-cm, .st-cn, .st-co, .st-cp, .st-cq, .st-cr, .st-cs, .st-ct, .st-cu, .st-cv, .st-cw, .st-cx, .st-cy, .st-cz {
-        color: #ffffff !important;
+        color: #002b45 !important;
     }
     .stButton>button {
         background-color: #ffd600 !important;
@@ -65,10 +66,11 @@ st.markdown(
 # --- Morek Logo Header ---
 col1, col2 = st.columns([1, 6])
 with col1:
-    st.image(
-        "https://www.morek.co.uk/wp-content/uploads/2021/03/morek-logo.svg",
-        use_container_width=True
-    )
+    logo_path = "morek_logo.jpg"
+    if pathlib.Path(logo_path).exists():
+        st.image(logo_path, use_container_width=True)
+    else:
+        st.warning("Logo file 'morek_logo.jpg' not found. Please add it to the project directory.")
 with col2:
     st.markdown("<span style='font-size:2.2em; font-weight: bold; color: #ffd600;'>COMPANY SEARCH ENGINE</span>", unsafe_allow_html=True)
 
@@ -92,7 +94,7 @@ if not st.session_state['authenticated']:
     st.stop()
 
 # --- Settings ---
-st.title("📄 COMPANY SEARCH ENGINE")
+# st.title("📄 COMPANY SEARCH ENGINE")
 
 offerings_list = [
     "naval architecture support",
