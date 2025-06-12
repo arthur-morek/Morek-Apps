@@ -88,7 +88,7 @@ if not st.session_state['authenticated']:
             if username == "Morekian" and password == "Morek2025!":
                 st.session_state['authenticated'] = True
                 st.success("Login successful!")
-                st.experimental_rerun()
+                st.stop()
             else:
                 st.error("Incorrect username or password.")
     st.stop()
