@@ -14,7 +14,7 @@ offerings_list = [
     "temporary mooring design",
     "detailed mooring design",
     "pre-FEED mooring and dynamic cable design",
-    "seafastening",#
+    "seafastening",##
     "marine operations planning"
 ]
 
@@ -99,6 +99,13 @@ Guidelines:
 
 # --- File Upload ---
 uploaded_file = st.file_uploader("📎 Upload Delegate List PDF", type=["pdf"])
+
+display_df = pd.DataFrame()  # Safe default
+
+def highlight_partner(val):
+    if val is True or val == True or str(val).lower() == "true":
+        return 'background-color: #d4f7d4; font-weight: bold;'
+    return ''
 
 if uploaded_file:
     # Extract table by layout
@@ -191,12 +198,6 @@ if uploaded_file:
         # Add a filter to show only potential partners
         show_partners = st.checkbox("Show only potential partners", value=False)
         display_df = df[df["Potential Partner"]] if show_partners else df
-
-        # Color highlight for 'Potential Partner'
-        def highlight_partner(val):
-            if val is True or val == True or str(val).lower() == "true":
-                return 'background-color: #d4f7d4; font-weight: bold;'
-            return ''
 
         st.success("✅ Labeling complete.")
         st.dataframe(
