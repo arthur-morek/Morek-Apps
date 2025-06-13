@@ -454,20 +454,43 @@ if uploaded_file:
         st.header("Summary Graphs")
         # Load complete dataset for visualization
         if os.path.exists(CACHE_PATH):
-            complete_df = pd.read_csv(CACHE_PATH)
-            # Merge with original data to ensure we have all companies
-            complete_df = pd.merge(
-                st.session_state.display_df[["First Name", "Last Name", "Job Title", "Company"]],
-                complete_df,
-                on="Company",
-                how="left"
-            )
+            try:
+                complete_df = pd.read_csv(CACHE_PATH)
+                # Ensure all required columns exist
+                required_columns = [
+                    "First Name", "Last Name", "Job Title", "Company",
+                    "Industry", "Company Type", "Business Model", "Company Size",
+                    "Company Age", "Potential Partner", "Partner Reasoning",
+                    "Known Partners", "Similar to Morek", "Relevant Offerings", "Reasoning"
+                ]
+                
+                # Add missing columns with default values
+                for col in required_columns:
+                    if col not in complete_df.columns:
+                        if col == "Potential Partner":
+                            complete_df[col] = False
+                        elif col in ["Known Partners", "Similar to Morek", "Relevant Offerings"]:
+                            complete_df[col] = ""
+                        else:
+                            complete_df[col] = ""
+
+                # Merge with original data to ensure we have all companies
+                complete_df = pd.merge(
+                    st.session_state.display_df[["First Name", "Last Name", "Job Title", "Company"]],
+                    complete_df,
+                    on="Company",
+                    how="left"
+                )
+            except Exception as e:
+                st.error(f"Error loading cached data: {str(e)}")
+                complete_df = st.session_state.display_df
         else:
             complete_df = st.session_state.display_df
 
         if not complete_df.empty:
+            # Industry distribution
             st.subheader("Companies by Industry")
-            industry_counts = complete_df["Industry"].value_counts().reset_index()
+            industry_counts = complete_df["Industry"].fillna("Unknown").value_counts().reset_index()
             industry_counts.columns = ["Industry", "Count"]
             st.altair_chart(
                 alt.Chart(industry_counts).mark_bar().encode(
@@ -478,8 +501,9 @@ if uploaded_file:
                 use_container_width=True
             )
 
+            # Company size distribution
             st.subheader("Companies by Size")
-            size_counts = complete_df["Company Size"].value_counts().reset_index()
+            size_counts = complete_df["Company Size"].fillna("Unknown").value_counts().reset_index()
             size_counts.columns = ["Company Size", "Count"]
             st.altair_chart(
                 alt.Chart(size_counts).mark_bar().encode(
@@ -490,8 +514,9 @@ if uploaded_file:
                 use_container_width=True
             )
 
+            # Potential partners distribution
             st.subheader("Potential Partners Distribution")
-            partner_counts = complete_df["Potential Partner"].value_counts().reset_index()
+            partner_counts = complete_df["Potential Partner"].fillna(False).value_counts().reset_index()
             partner_counts.columns = ["Potential Partner", "Count"]
             st.altair_chart(
                 alt.Chart(partner_counts).mark_arc(innerRadius=40).encode(
@@ -502,18 +527,22 @@ if uploaded_file:
                 use_container_width=True
             )
 
+            # Relevant offerings distribution
             st.subheader("Most Common Relevant Offerings")
-            offerings_series = complete_df["Relevant Offerings"].str.split(", ").explode()
-            offerings_counts = offerings_series.value_counts().reset_index()
+            offerings_series = complete_df["Relevant Offerings"].fillna("").str.split(", ").explode()
+            offerings_counts = offerings_series[offerings_series != ""].value_counts().reset_index()
             offerings_counts.columns = ["Offering", "Count"]
-            st.altair_chart(
-                alt.Chart(offerings_counts).mark_bar().encode(
-                    x=alt.X("Offering", sort="-y"),
-                    y="Count",
-                    tooltip=["Offering", "Count"]
-                ).properties(height=200),
-                use_container_width=True
-            )
+            if not offerings_counts.empty:
+                st.altair_chart(
+                    alt.Chart(offerings_counts).mark_bar().encode(
+                        x=alt.X("Offering", sort="-y"),
+                        y="Count",
+                        tooltip=["Offering", "Count"]
+                    ).properties(height=200),
+                    use_container_width=True
+                )
+            else:
+                st.info("No offerings data available.")
         else:
             st.info("No data to display.")
 
@@ -527,19 +556,19 @@ if uploaded_file:
                     with cols[j]:
                         st.markdown(
                             f"""
-                            <div style='border:1px solid #ddd; border-radius:10px; padding:1em; margin-bottom:1em; background-color:{'#d4f7d4' if row['Potential Partner'] else '#fff'};'>
+                            <div style='border:1px solid #ddd; border-radius:10px; padding:1em; margin-bottom:1em; background-color:{'#d4f7d4' if row.get('Potential Partner', False) else '#fff'};'>
                                 <h4>{row['Company']}</h4>
-                                <b>Industry:</b> {row['Industry']}<br>
-                                <b>Type:</b> {row['Company Type']}<br>
-                                <b>Size:</b> {row['Company Size']}<br>
-                                <b>Age:</b> {row['Company Age']}<br>
-                                <b>Business Model:</b> {row['Business Model']}<br>
-                                <b>Potential Partner:</b> {'✅' if row['Potential Partner'] else '❌'}<br>
-                                <b>Relevant Offerings:</b> {row['Relevant Offerings']}<br>
-                                <b>Known Partners:</b> {row['Known Partners']}<br>
-                                <b>Similar to Morek:</b> {row['Similar to Morek']}<br>
-                                <details><summary><b>Reasoning</b></summary>{row['Reasoning']}</details>
-                                <details><summary><b>Partner Reasoning</b></summary>{row['Partner Reasoning']}</details>
+                                <b>Industry:</b> {row.get('Industry', 'Unknown')}<br>
+                                <b>Type:</b> {row.get('Company Type', 'Unknown')}<br>
+                                <b>Size:</b> {row.get('Company Size', 'Unknown')}<br>
+                                <b>Age:</b> {row.get('Company Age', 'Unknown')}<br>
+                                <b>Business Model:</b> {row.get('Business Model', 'Unknown')}<br>
+                                <b>Potential Partner:</b> {'✅' if row.get('Potential Partner', False) else '❌'}<br>
+                                <b>Relevant Offerings:</b> {row.get('Relevant Offerings', '')}<br>
+                                <b>Known Partners:</b> {row.get('Known Partners', '')}<br>
+                                <b>Similar to Morek:</b> {row.get('Similar to Morek', '')}<br>
+                                <details><summary><b>Reasoning</b></summary>{row.get('Reasoning', '')}</details>
+                                <details><summary><b>Partner Reasoning</b></summary>{row.get('Partner Reasoning', '')}</details>
                             </div>
                             """,
                             unsafe_allow_html=True
