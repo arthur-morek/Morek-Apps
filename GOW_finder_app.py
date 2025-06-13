@@ -145,38 +145,62 @@ Guidelines:
 - Respond with JSON only
 """
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1-mini",  # Using GPT-4 for better accuracy
                 messages=[
                     {"role": "system", "content": "You are a precise and accurate marine engineering industry labeler. Always respond with valid JSON."},
                     {"role": "user", "content": prompt.strip()}
                 ],
                 temperature=0.1,
                 response_format={"type": "json_object"},
-                timeout=30  # Add timeout
+                timeout=60  # Increased timeout
             )
-            result = json.loads(response.choices[0].message.content)
+            
+            # Extract and validate the response
+            try:
+                result = json.loads(response.choices[0].message.content)
+            except json.JSONDecodeError as e:
+                st.error(f"Invalid JSON response for {company_name}: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise
+            
             # Validate the response structure
             required_keys = [
                 "industry", "company_type", "business_model", "company_size", "company_age",
                 "potential_partner", "partner_reasoning", "known_partners", "similar_to_morek",
                 "relevant_offerings", "reasoning"
             ]
-            if not all(key in result for key in required_keys):
-                raise ValueError("Missing required keys in response")
-            if not isinstance(result["relevant_offerings"], list):
-                result["relevant_offerings"] = []
+            
+            # Ensure all required keys exist with default values if missing
+            for key in required_keys:
+                if key not in result:
+                    if key == "potential_partner":
+                        result[key] = False
+                    elif key in ["known_partners", "similar_to_morek", "relevant_offerings"]:
+                        result[key] = []
+                    else:
+                        result[key] = "Unknown"
+            
+            # Ensure lists are actually lists
+            for key in ["known_partners", "similar_to_morek", "relevant_offerings"]:
+                if not isinstance(result[key], list):
+                    result[key] = []
+            
+            # Filter relevant offerings
             result["relevant_offerings"] = [
                 offering for offering in result["relevant_offerings"]
                 if offering in offerings_list
             ]
-            if not isinstance(result["known_partners"], list):
-                result["known_partners"] = []
-            if not isinstance(result["similar_to_morek"], list):
-                result["similar_to_morek"] = []
+            
+            # Ensure boolean value for potential_partner
+            result["potential_partner"] = bool(result["potential_partner"])
+            
             return result
+            
         except Exception as e:
             if attempt < max_retries - 1:
-                time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                time.sleep(retry_delay * (attempt + 1))
                 continue
             st.error(f"Error labeling {company_name} after {max_retries} attempts: {str(e)}")
             return {
