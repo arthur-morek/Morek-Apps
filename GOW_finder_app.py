@@ -7,6 +7,8 @@ import time
 import altair as alt
 import os
 import pathlib
+import concurrent.futures
+from typing import Dict, List, Any
 
 # --- Morek Branding ---
 st.markdown(
@@ -262,6 +264,42 @@ if uploaded_file:
 
     test_mode = st.toggle("🧪 Test Mode (Process only first 5 companies)", value=True)
     
+    def process_company_batch(companies: List[str], progress_bar, total_companies: int) -> List[Dict[str, Any]]:
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            # Create a dictionary to store futures
+            future_to_company = {
+                executor.submit(label_company_cached, company): company 
+                for company in companies
+            }
+            
+            # Process completed futures as they come in
+            for i, future in enumerate(concurrent.futures.as_completed(future_to_company)):
+                company = future_to_company[future]
+                try:
+                    result = future.result()
+                    result["Company"] = company
+                    results.append(result)
+                    # Update progress
+                    progress_bar.progress(min(1.0, (i + 1) / total_companies))
+                except Exception as e:
+                    st.error(f"Error processing {company}: {str(e)}")
+                    results.append({
+                        "Company": company,
+                        "industry": "Error",
+                        "company_type": "Error",
+                        "business_model": "Error",
+                        "company_size": "Error",
+                        "company_age": "Error",
+                        "potential_partner": False,
+                        "partner_reasoning": str(e),
+                        "known_partners": [],
+                        "similar_to_morek": [],
+                        "relevant_offerings": [],
+                        "reasoning": str(e)
+                    })
+        return results
+
     if st.button("🔍 Label Companies with GPT"):
         st.info("Calling GPT to label each unique company...")
         progress = st.progress(0)
@@ -282,42 +320,36 @@ if uploaded_file:
             """
             <div style='display: flex; align-items: center; gap: 0.5em;'>
                 <span style='font-size:2em;'>⏳</span>
-                <span style='font-size:1.2em;'>Labeling companies, please wait...</span>
+                <span style='font-size:1.2em;'>Labeling companies in parallel, please wait...</span>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        # Batch processing with smaller batches and progress updates
-        batch_size = 5  # Reduced batch size
+        # Process companies in parallel batches
+        batch_size = 10  # Process 10 companies at a time
         total = len(to_label)
         new_labeled = []
         
         for batch_start in range(0, total, batch_size):
             batch = to_label[batch_start:batch_start+batch_size]
-            batch_results = []
+            st.info(f"Processing batch {batch_start//batch_size + 1} of {(total + batch_size - 1)//batch_size}")
             
-            for i, company in enumerate(batch):
-                try:
-                    with st.spinner(f"Labeling {company} ({batch_start + i + 1}/{total})..."):
-                        result = label_company_cached(company)
-                        result_map[company] = result
-                        res = result.copy()
-                        res["Company"] = company
-                        batch_results.append(res)
-                except Exception as e:
-                    st.error(f"Failed to label {company}: {e}")
-                
-                progress.progress(min(1.0, (batch_start + i + 1) / max(1, total)))
-                time.sleep(0.5)  # Reduced delay between requests
+            # Process the batch in parallel
+            batch_results = process_company_batch(batch, progress, total)
+            
+            # Update result map and new_labeled list
+            for result in batch_results:
+                company = result["Company"]
+                result_map[company] = result
+                new_labeled.append(result)
             
             # Save progress after each batch
             if batch_results:
-                new_labeled.extend(batch_results)
                 pd.DataFrame(new_labeled).to_csv(CACHE_PATH, index=False)
                 st.success(f"✅ Processed {len(new_labeled)} of {total} companies")
             
-            # Add a small delay between batches to prevent rate limiting
+            # Small delay between batches to prevent rate limiting
             time.sleep(1)
 
         loading_placeholder.empty()  # Remove the custom spinner when done
