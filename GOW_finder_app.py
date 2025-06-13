@@ -452,10 +452,22 @@ if uploaded_file:
     # --- Summary Graphs ---
     with tab1:
         st.header("Summary Graphs")
-        # Industry distribution
-        if not display_df.empty:
+        # Load complete dataset for visualization
+        if os.path.exists(CACHE_PATH):
+            complete_df = pd.read_csv(CACHE_PATH)
+            # Merge with original data to ensure we have all companies
+            complete_df = pd.merge(
+                st.session_state.display_df[["First Name", "Last Name", "Job Title", "Company"]],
+                complete_df,
+                on="Company",
+                how="left"
+            )
+        else:
+            complete_df = st.session_state.display_df
+
+        if not complete_df.empty:
             st.subheader("Companies by Industry")
-            industry_counts = display_df["Industry"].value_counts().reset_index()
+            industry_counts = complete_df["Industry"].value_counts().reset_index()
             industry_counts.columns = ["Industry", "Count"]
             st.altair_chart(
                 alt.Chart(industry_counts).mark_bar().encode(
@@ -467,7 +479,7 @@ if uploaded_file:
             )
 
             st.subheader("Companies by Size")
-            size_counts = display_df["Company Size"].value_counts().reset_index()
+            size_counts = complete_df["Company Size"].value_counts().reset_index()
             size_counts.columns = ["Company Size", "Count"]
             st.altair_chart(
                 alt.Chart(size_counts).mark_bar().encode(
@@ -479,7 +491,7 @@ if uploaded_file:
             )
 
             st.subheader("Potential Partners Distribution")
-            partner_counts = display_df["Potential Partner"].value_counts().reset_index()
+            partner_counts = complete_df["Potential Partner"].value_counts().reset_index()
             partner_counts.columns = ["Potential Partner", "Count"]
             st.altair_chart(
                 alt.Chart(partner_counts).mark_arc(innerRadius=40).encode(
@@ -491,7 +503,7 @@ if uploaded_file:
             )
 
             st.subheader("Most Common Relevant Offerings")
-            offerings_series = display_df["Relevant Offerings"].str.split(", ").explode()
+            offerings_series = complete_df["Relevant Offerings"].str.split(", ").explode()
             offerings_counts = offerings_series.value_counts().reset_index()
             offerings_counts.columns = ["Offering", "Count"]
             st.altair_chart(
@@ -508,12 +520,13 @@ if uploaded_file:
     # --- Company Cards ---
     with tab2:
         st.header("Company Cards")
-        if not display_df.empty:
-            for i in range(0, len(display_df), 3):
+        if not complete_df.empty:
+            for i in range(0, len(complete_df), 3):
                 cols = st.columns(3)
-                for j, (_, row) in enumerate(display_df.iloc[i:i+3].iterrows()):
+                for j, (_, row) in enumerate(complete_df.iloc[i:i+3].iterrows()):
                     with cols[j]:
-                        st.markdown(f"""
+                        st.markdown(
+                            f"""
                             <div style='border:1px solid #ddd; border-radius:10px; padding:1em; margin-bottom:1em; background-color:{'#d4f7d4' if row['Potential Partner'] else '#fff'};'>
                                 <h4>{row['Company']}</h4>
                                 <b>Industry:</b> {row['Industry']}<br>
@@ -528,17 +541,19 @@ if uploaded_file:
                                 <details><summary><b>Reasoning</b></summary>{row['Reasoning']}</details>
                                 <details><summary><b>Partner Reasoning</b></summary>{row['Partner Reasoning']}</details>
                             </div>
-                        """, unsafe_allow_html=True)
+                            """,
+                            unsafe_allow_html=True
+                        )
         else:
             st.info("No data to display.")
 
     # --- Full Table ---
     with tab3:
         st.header("Full Table")
-        safe_display_dataframe(display_df, use_styling=True)
+        safe_display_dataframe(complete_df, use_styling=True)
 
     # --- Download ---
-    st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="gow2025_delegates_classified.csv")
+    st.download_button("⬇️ Download CSV", complete_df.to_csv(index=False), file_name="gow2025_delegates_classified.csv")
 
 else:
     st.info("Upload a GOW 2025 delegate list PDF to begin.")
