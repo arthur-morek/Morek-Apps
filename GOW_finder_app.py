@@ -390,28 +390,46 @@ if uploaded_file:
         # Save to disk (final save)
         labeled_df.to_csv(CACHE_PATH, index=False)
 
-        # Merge with main df for display
-        df = df.merge(labeled_df, on="Company", how="left", suffixes=("", "_labeled"))
+        # Create a copy of the original DataFrame for display
+        display_df = df.copy()
 
-        # Attach results to DataFrame
-        df["Industry"] = df["Company"].map(lambda x: result_map.get(x, {}).get("industry", ""))
-        df["Company Type"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_type", ""))
-        df["Business Model"] = df["Company"].map(lambda x: result_map.get(x, {}).get("business_model", ""))
-        df["Company Size"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_size", ""))
-        df["Company Age"] = df["Company"].map(lambda x: result_map.get(x, {}).get("company_age", ""))
-        df["Potential Partner"] = df["Company"].map(lambda x: result_map.get(x, {}).get("potential_partner", False))
-        df["Partner Reasoning"] = df["Company"].map(lambda x: result_map.get(x, {}).get("partner_reasoning", ""))
-        df["Known Partners"] = df["Company"].map(lambda x: ", ".join(result_map.get(x, {}).get("known_partners", [])))
-        df["Similar to Morek"] = df["Company"].map(
-            lambda x: ", ".join([
-                c for c in result_map.get(x, {}).get("similar_to_morek", [])
-                if c.strip().lower() != "morek engineering"
-            ])
-        )
-        df["Relevant Offerings"] = df["Company"].map(
-            lambda x: ", ".join(result_map.get(x, {}).get("relevant_offerings", []))
-        )
-        df["Reasoning"] = df["Company"].map(lambda x: result_map.get(x, {}).get("reasoning", ""))
+        # Safely add new columns with default values
+        new_columns = {
+            "Industry": "",
+            "Company Type": "",
+            "Business Model": "",
+            "Company Size": "",
+            "Company Age": "",
+            "Potential Partner": False,
+            "Partner Reasoning": "",
+            "Known Partners": "",
+            "Similar to Morek": "",
+            "Relevant Offerings": "",
+            "Reasoning": ""
+        }
+
+        for col, default_value in new_columns.items():
+            display_df[col] = default_value
+
+        # Update columns with results
+        for company in display_df["Company"].unique():
+            if company in result_map:
+                result = result_map[company]
+                mask = display_df["Company"] == company
+                display_df.loc[mask, "Industry"] = result.get("industry", "")
+                display_df.loc[mask, "Company Type"] = result.get("company_type", "")
+                display_df.loc[mask, "Business Model"] = result.get("business_model", "")
+                display_df.loc[mask, "Company Size"] = result.get("company_size", "")
+                display_df.loc[mask, "Company Age"] = result.get("company_age", "")
+                display_df.loc[mask, "Potential Partner"] = result.get("potential_partner", False)
+                display_df.loc[mask, "Partner Reasoning"] = result.get("partner_reasoning", "")
+                display_df.loc[mask, "Known Partners"] = ", ".join(result.get("known_partners", []))
+                display_df.loc[mask, "Similar to Morek"] = ", ".join([
+                    c for c in result.get("similar_to_morek", [])
+                    if c.strip().lower() != "morek engineering"
+                ])
+                display_df.loc[mask, "Relevant Offerings"] = ", ".join(result.get("relevant_offerings", []))
+                display_df.loc[mask, "Reasoning"] = result.get("reasoning", "")
 
         if len(new_labeled) < total:
             st.warning(f"Labeling incomplete: {len(new_labeled)} of {total} companies processed. You can rerun to continue.")
