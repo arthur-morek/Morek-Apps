@@ -489,13 +489,21 @@ if uploaded_file:
     # --- Full Table ---
     with tab3:
         st.header("Full Table")
-        if "Potential Partner" in display_df.columns:
-            st.dataframe(
-                display_df.style.applymap(highlight_partner, subset=["Potential Partner"]),
-                use_container_width=True
+        if not display_df.empty:
+            # Ensure all required columns exist
+            required_columns = ["Potential Partner"]
+            for col in required_columns:
+                if col not in display_df.columns:
+                    display_df[col] = False  # Add missing column with default value
+            
+            # Apply styling only if the column exists
+            styled_df = display_df.style.applymap(
+                highlight_partner,
+                subset=["Potential Partner"]
             )
+            st.dataframe(styled_df, use_container_width=True)
         else:
-            st.dataframe(display_df, use_container_width=True)
+            st.info("No data to display.")
 
     # --- Download ---
     st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="gow2025_delegates_classified.csv")
