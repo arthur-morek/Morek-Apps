@@ -316,6 +316,9 @@ if uploaded_file:
 
         # Custom loading spinner in main area
         loading_placeholder = st.empty()
+        batch_info_placeholder = st.empty()
+        success_placeholder = st.empty()
+        
         loading_placeholder.markdown(
             """
             <div style='display: flex; align-items: center; gap: 0.5em;'>
@@ -333,7 +336,7 @@ if uploaded_file:
         
         for batch_start in range(0, total, batch_size):
             batch = to_label[batch_start:batch_start+batch_size]
-            st.info(f"Processing batch {batch_start//batch_size + 1} of {(total + batch_size - 1)//batch_size}")
+            batch_info_placeholder.info(f"Processing batch {batch_start//batch_size + 1} of {(total + batch_size - 1)//batch_size}")
             
             # Process the batch in parallel
             batch_results = process_company_batch(batch, progress, total)
@@ -347,12 +350,13 @@ if uploaded_file:
             # Save progress after each batch
             if batch_results:
                 pd.DataFrame(new_labeled).to_csv(CACHE_PATH, index=False)
-                st.success(f"✅ Processed {len(new_labeled)} of {total} companies")
+                success_placeholder.success(f"✅ Processed {len(new_labeled)} of {total} companies")
             
             # Small delay between batches to prevent rate limiting
             time.sleep(1)
 
-        loading_placeholder.empty()  # Remove the custom spinner when done
+        loading_placeholder.empty()  # Remove the loading spinner
+        batch_info_placeholder.empty()  # Remove the batch info
 
         # Combine with cached
         if not cached_df.empty:
