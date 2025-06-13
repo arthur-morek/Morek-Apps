@@ -88,7 +88,7 @@ if not st.session_state['authenticated']:
             if username == "Morekian" and password == "Morek2025!":
                 st.session_state['authenticated'] = True
                 st.success("Login successful!")
-                st.stop()
+                st.rerun()
             else:
                 st.error("Incorrect username or password.")
     st.stop()
@@ -108,7 +108,12 @@ offerings_list = [
 client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
 
 def label_company(company_name):
-    prompt = f"""
+    max_retries = 3
+    retry_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            prompt = f"""
 You are an expert marine engineering consultant. Your task is to label companies based on their name and your knowledge of the marine and offshore industries.
 
 For the company: "{company_name}"
@@ -124,7 +129,7 @@ Return a JSON object with the following keys:
     "partner_reasoning": "A short explanation for your potential_partner assessment.",
     "known_partners": ["List of known or likely partner companies, if any are public or can be inferred. If unknown, return an empty list."],
     "similar_to_morek": ["List of companies that are similar to Morek Engineering, if any. If unknown, return an empty list."],
-    "relevant_offerings": ["List of relevant services from: {', '.join(offerings_list)} that could be of use to this company from a third party"],
+    "relevant_offerings": ["List of relevant services from: {', '.join(offerings_list)}"],
     "reasoning": "A short explanation of why these offerings are relevant to this company."
 }}
 
@@ -137,54 +142,56 @@ Guidelines:
 - Ensure the response is valid JSON
 - Respond with JSON only
 """
-    try:
-        print(prompt)
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "You are a precise and accurate marine engineering industry labeler. Always respond with valid JSON."},
-                {"role": "user", "content": prompt.strip()}
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        result = json.loads(response.choices[0].message.content)
-        # Validate the response structure
-        required_keys = [
-            "industry", "company_type", "business_model", "company_size", "company_age",
-            "potential_partner", "partner_reasoning", "known_partners", "similar_to_morek",
-            "relevant_offerings", "reasoning"
-        ]
-        if not all(key in result for key in required_keys):
-            raise ValueError("Missing required keys in response")
-        if not isinstance(result["relevant_offerings"], list):
-            result["relevant_offerings"] = []
-        result["relevant_offerings"] = [
-            offering for offering in result["relevant_offerings"]
-            if offering in offerings_list
-        ]
-        if not isinstance(result["known_partners"], list):
-            result["known_partners"] = []
-        if not isinstance(result["similar_to_morek"], list):
-            result["similar_to_morek"] = []
-        return result
-    except Exception as e:
-        st.error(f"Error labeling {company_name}: {str(e)}")
-        return {
-            "industry": "Error",
-            "company_type": "Error",
-            "business_model": "Error",
-            "company_size": "Error",
-            "company_age": "Error",
-            "potential_partner": False,
-            "partner_reasoning": str(e),
-            "known_partners": [],
-            "similar_to_morek": [],
-            "relevant_offerings": [],
-            "reasoning": str(e)
-        }
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": "You are a precise and accurate marine engineering industry labeler. Always respond with valid JSON."},
+                    {"role": "user", "content": prompt.strip()}
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+                timeout=30  # Add timeout
+            )
+            result = json.loads(response.choices[0].message.content)
+            # Validate the response structure
+            required_keys = [
+                "industry", "company_type", "business_model", "company_size", "company_age",
+                "potential_partner", "partner_reasoning", "known_partners", "similar_to_morek",
+                "relevant_offerings", "reasoning"
+            ]
+            if not all(key in result for key in required_keys):
+                raise ValueError("Missing required keys in response")
+            if not isinstance(result["relevant_offerings"], list):
+                result["relevant_offerings"] = []
+            result["relevant_offerings"] = [
+                offering for offering in result["relevant_offerings"]
+                if offering in offerings_list
+            ]
+            if not isinstance(result["known_partners"], list):
+                result["known_partners"] = []
+            if not isinstance(result["similar_to_morek"], list):
+                result["similar_to_morek"] = []
+            return result
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                continue
+            st.error(f"Error labeling {company_name} after {max_retries} attempts: {str(e)}")
+            return {
+                "industry": "Error",
+                "company_type": "Error",
+                "business_model": "Error",
+                "company_size": "Error",
+                "company_age": "Error",
+                "potential_partner": False,
+                "partner_reasoning": str(e),
+                "known_partners": [],
+                "similar_to_morek": [],
+                "relevant_offerings": [],
+                "reasoning": str(e)
+            }
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def label_company_cached(company_name):
     return label_company(company_name)
 
@@ -281,26 +288,37 @@ if uploaded_file:
             unsafe_allow_html=True
         )
 
-        # Batch processing
-        batch_size = 10
+        # Batch processing with smaller batches and progress updates
+        batch_size = 5  # Reduced batch size
         total = len(to_label)
         new_labeled = []
+        
         for batch_start in range(0, total, batch_size):
             batch = to_label[batch_start:batch_start+batch_size]
+            batch_results = []
+            
             for i, company in enumerate(batch):
                 try:
-                    with st.spinner(f"Labeling {company}..."):
+                    with st.spinner(f"Labeling {company} ({batch_start + i + 1}/{total})..."):
                         result = label_company_cached(company)
                         result_map[company] = result
                         res = result.copy()
                         res["Company"] = company
-                        new_labeled.append(res)
+                        batch_results.append(res)
                 except Exception as e:
                     st.error(f"Failed to label {company}: {e}")
+                
                 progress.progress(min(1.0, (batch_start + i + 1) / max(1, total)))
-                time.sleep(1.1)
+                time.sleep(0.5)  # Reduced delay between requests
+            
             # Save progress after each batch
-            pd.DataFrame(new_labeled).to_csv(CACHE_PATH, index=False)
+            if batch_results:
+                new_labeled.extend(batch_results)
+                pd.DataFrame(new_labeled).to_csv(CACHE_PATH, index=False)
+                st.success(f"✅ Processed {len(new_labeled)} of {total} companies")
+            
+            # Add a small delay between batches to prevent rate limiting
+            time.sleep(1)
 
         loading_placeholder.empty()  # Remove the custom spinner when done
 
