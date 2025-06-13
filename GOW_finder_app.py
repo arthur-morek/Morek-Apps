@@ -208,6 +208,29 @@ def highlight_partner(val):
         return 'background-color: #d4f7d4; font-weight: bold;'
     return ''
 
+def safe_display_dataframe(df, use_styling=True):
+    """Safely display a DataFrame with optional styling."""
+    if df.empty:
+        st.info("No data to display.")
+        return
+    
+    # Ensure required columns exist
+    if use_styling and "Potential Partner" not in df.columns:
+        df["Potential Partner"] = False
+    
+    try:
+        if use_styling:
+            styled_df = df.style.applymap(
+                highlight_partner,
+                subset=["Potential Partner"]
+            )
+            st.dataframe(styled_df, use_container_width=True)
+        else:
+            st.dataframe(df, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Error displaying table: {str(e)}")
+        st.dataframe(df, use_container_width=True)  # Fallback to unstyled display
+
 if uploaded_file:
     # Extract table by layout
     rows = []
@@ -250,9 +273,9 @@ if uploaded_file:
             mask |= df[column].astype(str).str.contains(search_term, case=False, na=False)
         filtered = df[mask]
         st.write(f"🔎 Found {len(filtered)} result(s):")
-        st.dataframe(filtered)
+        safe_display_dataframe(filtered, use_styling=False)
     else:
-        st.dataframe(df)
+        safe_display_dataframe(df, use_styling=False)
 
     # Try to load cached results
     if os.path.exists(CACHE_PATH):
@@ -395,10 +418,7 @@ if uploaded_file:
         else:
             st.success("✅ Labeling complete.")
 
-        st.dataframe(
-            display_df.style.applymap(highlight_partner, subset=["Potential Partner"]),
-            use_container_width=True
-        )
+        safe_display_dataframe(display_df, use_styling=True)
 
     # --- Visualization Tabs ---
     tab1, tab2, tab3 = st.tabs(["Summary Graphs", "Company Cards", "Full Table"])
@@ -489,21 +509,7 @@ if uploaded_file:
     # --- Full Table ---
     with tab3:
         st.header("Full Table")
-        if not display_df.empty:
-            # Ensure all required columns exist
-            required_columns = ["Potential Partner"]
-            for col in required_columns:
-                if col not in display_df.columns:
-                    display_df[col] = False  # Add missing column with default value
-            
-            # Apply styling only if the column exists
-            styled_df = display_df.style.applymap(
-                highlight_partner,
-                subset=["Potential Partner"]
-            )
-            st.dataframe(styled_df, use_container_width=True)
-        else:
-            st.info("No data to display.")
+        safe_display_dataframe(display_df, use_styling=True)
 
     # --- Download ---
     st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="gow2025_delegates_classified.csv")
