@@ -288,24 +288,40 @@ if uploaded_file:
 
     df = pd.DataFrame(rows, columns=["First Name", "Last Name", "Job Title", "Company"])
     st.success(f"✅ Extracted {len(df)} delegates.")
+
+    # Initialize session state for display_df if it doesn't exist
+    if 'display_df' not in st.session_state:
+        st.session_state.display_df = df.copy()
+        # Add default columns
+        for col in ["Industry", "Company Type", "Business Model", "Company Size", "Company Age", 
+                   "Potential Partner", "Partner Reasoning", "Known Partners", "Similar to Morek", 
+                   "Relevant Offerings", "Reasoning"]:
+            st.session_state.display_df[col] = ""
+
     # --- Search ---
     search_term = st.text_input("🔍 Search by name, job title, company:")
     if search_term:
         # Create a mask for each column and combine them
-        mask = pd.Series(False, index=df.index)
-        for column in df.columns:
-            mask |= df[column].astype(str).str.contains(search_term, case=False, na=False)
-        filtered = df[mask]
+        mask = pd.Series(False, index=st.session_state.display_df.index)
+        for column in st.session_state.display_df.columns:
+            mask |= st.session_state.display_df[column].astype(str).str.contains(search_term, case=False, na=False)
+        filtered = st.session_state.display_df[mask]
         st.write(f"🔎 Found {len(filtered)} result(s):")
-        safe_display_dataframe(filtered, use_styling=False)
+        safe_display_dataframe(filtered, use_styling=True)
     else:
-        safe_display_dataframe(df, use_styling=False)
+        safe_display_dataframe(st.session_state.display_df, use_styling=True)
 
     # Try to load cached results
     if os.path.exists(CACHE_PATH):
         cached_df = pd.read_csv(CACHE_PATH)
-        # Merge on Company
-        df = df.merge(cached_df, on="Company", how="left", suffixes=("", "_cached"))
+        # Update display_df with cached results
+        for company in st.session_state.display_df["Company"].unique():
+            if company in cached_df["Company"].values:
+                cached_row = cached_df[cached_df["Company"] == company].iloc[0]
+                mask = st.session_state.display_df["Company"] == company
+                for col in cached_row.index:
+                    if col != "Company":
+                        st.session_state.display_df.loc[mask, col] = cached_row[col]
     else:
         cached_df = pd.DataFrame()
 
@@ -393,6 +409,23 @@ if uploaded_file:
                 company = result["Company"]
                 result_map[company] = result
                 new_labeled.append(result)
+                
+                # Update display_df immediately
+                mask = st.session_state.display_df["Company"] == company
+                st.session_state.display_df.loc[mask, "Industry"] = result.get("industry", "")
+                st.session_state.display_df.loc[mask, "Company Type"] = result.get("company_type", "")
+                st.session_state.display_df.loc[mask, "Business Model"] = result.get("business_model", "")
+                st.session_state.display_df.loc[mask, "Company Size"] = result.get("company_size", "")
+                st.session_state.display_df.loc[mask, "Company Age"] = result.get("company_age", "")
+                st.session_state.display_df.loc[mask, "Potential Partner"] = result.get("potential_partner", False)
+                st.session_state.display_df.loc[mask, "Partner Reasoning"] = result.get("partner_reasoning", "")
+                st.session_state.display_df.loc[mask, "Known Partners"] = ", ".join(result.get("known_partners", []))
+                st.session_state.display_df.loc[mask, "Similar to Morek"] = ", ".join([
+                    c for c in result.get("similar_to_morek", [])
+                    if c.strip().lower() != "morek engineering"
+                ])
+                st.session_state.display_df.loc[mask, "Relevant Offerings"] = ", ".join(result.get("relevant_offerings", []))
+                st.session_state.display_df.loc[mask, "Reasoning"] = result.get("reasoning", "")
             
             # Save progress after each batch
             if batch_results:
@@ -405,62 +438,13 @@ if uploaded_file:
         loading_placeholder.empty()  # Remove the loading spinner
         batch_info_placeholder.empty()  # Remove the batch info
 
-        # Combine with cached
-        if not cached_df.empty:
-            labeled_df = pd.concat([cached_df, pd.DataFrame(new_labeled)], ignore_index=True)
-        else:
-            labeled_df = pd.DataFrame(new_labeled)
-
-        # Save to disk (final save)
-        labeled_df.to_csv(CACHE_PATH, index=False)
-
-        # Create a copy of the original DataFrame for display
-        display_df = df.copy()
-
-        # Safely add new columns with default values
-        new_columns = {
-            "Industry": "",
-            "Company Type": "",
-            "Business Model": "",
-            "Company Size": "",
-            "Company Age": "",
-            "Potential Partner": False,
-            "Partner Reasoning": "",
-            "Known Partners": "",
-            "Similar to Morek": "",
-            "Relevant Offerings": "",
-            "Reasoning": ""
-        }
-
-        for col, default_value in new_columns.items():
-            display_df[col] = default_value
-
-        # Update columns with results
-        for company in display_df["Company"].unique():
-            if company in result_map:
-                result = result_map[company]
-                mask = display_df["Company"] == company
-                display_df.loc[mask, "Industry"] = result.get("industry", "")
-                display_df.loc[mask, "Company Type"] = result.get("company_type", "")
-                display_df.loc[mask, "Business Model"] = result.get("business_model", "")
-                display_df.loc[mask, "Company Size"] = result.get("company_size", "")
-                display_df.loc[mask, "Company Age"] = result.get("company_age", "")
-                display_df.loc[mask, "Potential Partner"] = result.get("potential_partner", False)
-                display_df.loc[mask, "Partner Reasoning"] = result.get("partner_reasoning", "")
-                display_df.loc[mask, "Known Partners"] = ", ".join(result.get("known_partners", []))
-                display_df.loc[mask, "Similar to Morek"] = ", ".join([
-                    c for c in result.get("similar_to_morek", [])
-                    if c.strip().lower() != "morek engineering"
-                ])
-                display_df.loc[mask, "Relevant Offerings"] = ", ".join(result.get("relevant_offerings", []))
-                display_df.loc[mask, "Reasoning"] = result.get("reasoning", "")
-
         if len(new_labeled) < total:
             st.warning(f"Labeling incomplete: {len(new_labeled)} of {total} companies processed. You can rerun to continue.")
         else:
             st.success("✅ Labeling complete.")
 
-        safe_display_dataframe(display_df, use_styling=True)
+        # Force a rerun to update the display
+        st.rerun()
 
     # --- Visualization Tabs ---
     tab1, tab2, tab3 = st.tabs(["Summary Graphs", "Company Cards", "Full Table"])
