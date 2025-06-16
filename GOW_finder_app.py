@@ -286,44 +286,62 @@ if uploaded_file:
                     comp = " ".join(comps)
                     rows.append([first, last, job, comp])
 
-    df = pd.DataFrame(rows, columns=["First Name", "Last Name", "Job Title", "Company"])
-    st.success(f"✅ Extracted {len(df)} delegates.")
+    # Initialize the base DataFrame
+    base_df = pd.DataFrame(rows, columns=["First Name", "Last Name", "Job Title", "Company"])
+    st.success(f"✅ Extracted {len(base_df)} delegates.")
 
     # Initialize session state for display_df if it doesn't exist
     if 'display_df' not in st.session_state:
-        st.session_state.display_df = df.copy()
+        st.session_state.display_df = base_df.copy()
         # Add default columns
         for col in ["Industry", "Company Type", "Business Model", "Company Size", "Company Age", 
                    "Potential Partner", "Partner Reasoning", "Known Partners", "Similar to Morek", 
                    "Relevant Offerings", "Reasoning"]:
             st.session_state.display_df[col] = ""
 
+    # Try to load cached results
+    if os.path.exists(CACHE_PATH):
+        try:
+            cached_df = pd.read_csv(CACHE_PATH)
+            # Update display_df with cached results
+            for company in st.session_state.display_df["Company"].unique():
+                if company in cached_df["Company"].values:
+                    cached_row = cached_df[cached_df["Company"] == company].iloc[0]
+                    mask = st.session_state.display_df["Company"] == company
+                    for col in cached_row.index:
+                        if col != "Company":
+                            st.session_state.display_df.loc[mask, col] = cached_row[col]
+        except Exception as e:
+            st.error(f"Error loading cached data: {str(e)}")
+            cached_df = pd.DataFrame()
+    else:
+        cached_df = pd.DataFrame()
+
     # --- Search ---
     search_term = st.text_input("🔍 Search by name, job title, company:")
-    if search_term:
+    
+    # Add toggle for potential partners
+    show_only_potential = st.toggle("👥 Show Only Potential Partners", value=False)
+    
+    if search_term or show_only_potential:
         # Create a mask for each column and combine them
         mask = pd.Series(False, index=st.session_state.display_df.index)
-        for column in st.session_state.display_df.columns:
-            mask |= st.session_state.display_df[column].astype(str).str.contains(search_term, case=False, na=False)
+        
+        # Apply search filter if search term exists
+        if search_term:
+            for column in st.session_state.display_df.columns:
+                mask |= st.session_state.display_df[column].astype(str).str.contains(search_term, case=False, na=False)
+        
+        # Apply potential partners filter
+        if show_only_potential:
+            potential_mask = st.session_state.display_df["Potential Partner"].astype(str).str.lower() == "true"
+            mask = mask & potential_mask if search_term else potential_mask
+        
         filtered = st.session_state.display_df[mask]
         st.write(f"🔎 Found {len(filtered)} result(s):")
         safe_display_dataframe(filtered, use_styling=True)
     else:
         safe_display_dataframe(st.session_state.display_df, use_styling=True)
-
-    # Try to load cached results
-    if os.path.exists(CACHE_PATH):
-        cached_df = pd.read_csv(CACHE_PATH)
-        # Update display_df with cached results
-        for company in st.session_state.display_df["Company"].unique():
-            if company in cached_df["Company"].values:
-                cached_row = cached_df[cached_df["Company"] == company].iloc[0]
-                mask = st.session_state.display_df["Company"] == company
-                for col in cached_row.index:
-                    if col != "Company":
-                        st.session_state.display_df.loc[mask, col] = cached_row[col]
-    else:
-        cached_df = pd.DataFrame()
 
     test_mode = st.toggle("🧪 Test Mode (Process only first 5 companies)", value=True)
     
@@ -367,7 +385,7 @@ if uploaded_file:
         st.info("Calling GPT to label each unique company...")
         progress = st.progress(0)
         result_map = {}
-        companies = df["Company"].unique()
+        companies = base_df["Company"].unique()
         
         if test_mode:
             companies = companies[:5]
@@ -376,6 +394,10 @@ if uploaded_file:
         # Only process companies not already labeled
         already_labeled = set(cached_df["Company"]) if not cached_df.empty else set()
         to_label = [c for c in companies if c not in already_labeled]
+
+        if not to_label:
+            st.info("All companies have already been labeled. Use the search to view results.")
+            st.stop()
 
         # Custom loading spinner in main area
         loading_placeholder = st.empty()
@@ -429,7 +451,16 @@ if uploaded_file:
             
             # Save progress after each batch
             if batch_results:
-                pd.DataFrame(new_labeled).to_csv(CACHE_PATH, index=False)
+                # Combine with existing cached data
+                if os.path.exists(CACHE_PATH):
+                    existing_df = pd.read_csv(CACHE_PATH)
+                    combined_df = pd.concat([existing_df, pd.DataFrame(new_labeled)], ignore_index=True)
+                    # Remove duplicates keeping the latest version
+                    combined_df = combined_df.drop_duplicates(subset=["Company"], keep="last")
+                else:
+                    combined_df = pd.DataFrame(new_labeled)
+                
+                combined_df.to_csv(CACHE_PATH, index=False)
                 success_placeholder.success(f"✅ Processed {len(new_labeled)} of {total} companies")
             
             # Small delay between batches to prevent rate limiting
