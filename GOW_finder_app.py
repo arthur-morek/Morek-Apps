@@ -283,6 +283,34 @@ def clean_company_name(company: str) -> str:
     
     return company
 
+def highlight_partner(val):
+    if val is True or val == True or str(val).lower() == "true":
+        return 'background-color: #d4f7d4; font-weight: bold;'
+    return ''
+
+def safe_display_dataframe(df, use_styling=True):
+    """Safely display a DataFrame with optional styling."""
+    if df.empty:
+        st.info("No data to display.")
+        return
+    
+    # Ensure required columns exist
+    if use_styling and "Potential Partner" not in df.columns:
+        df["Potential Partner"] = False
+    
+    try:
+        if use_styling:
+            styled_df = df.style.applymap(
+                highlight_partner,
+                subset=["Potential Partner"]
+            )
+            st.dataframe(styled_df, use_container_width=True)
+        else:
+            st.dataframe(df, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Error displaying table: {str(e)}")
+        st.dataframe(df, use_container_width=True)  # Fallback to unstyled display
+
 # Initialize session state for data storage
 if 'labeled_data' not in st.session_state:
     st.session_state.labeled_data = pd.DataFrame()
