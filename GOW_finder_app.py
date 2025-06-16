@@ -313,7 +313,20 @@ def safe_display_dataframe(df, use_styling=True):
 
 # Initialize session state for data storage
 if 'labeled_data' not in st.session_state:
-    st.session_state.labeled_data = pd.DataFrame()
+    st.session_state.labeled_data = pd.DataFrame(columns=[
+        "Company", "Industry", "Company Type", "Business Model", 
+        "Company Size", "Company Age", "Potential Partner", 
+        "Partner Reasoning", "Known Partners", "Similar to Morek", 
+        "Relevant Offerings", "Reasoning"
+    ])
+
+if 'display_df' not in st.session_state:
+    st.session_state.display_df = pd.DataFrame(columns=[
+        "Company", "Industry", "Company Type", "Business Model", 
+        "Company Size", "Company Age", "Potential Partner", 
+        "Partner Reasoning", "Known Partners", "Similar to Morek", 
+        "Relevant Offerings", "Reasoning"
+    ])
 
 # --- File Upload ---
 st.markdown("## 📄 Upload Delegate List")
@@ -352,9 +365,9 @@ if uploaded_file:
             "Reasoning": ""
         })
         
-        # Initialize display_df if not exists
-        if 'display_df' not in st.session_state:
-            st.session_state.display_df = base_df.copy()
+        # Update display_df with new companies
+        st.session_state.display_df = pd.concat([st.session_state.display_df, base_df], ignore_index=True)
+        st.session_state.display_df = st.session_state.display_df.drop_duplicates(subset=["Company"], keep="last")
         
         # Update display_df with any existing labeled data
         if not st.session_state.labeled_data.empty:
@@ -419,6 +432,7 @@ if uploaded_file:
     # Add toggle for potential partners
     show_only_potential = st.toggle("👥 Show Only Potential Partners", value=False)
     
+    # Ensure display_df exists and has the required columns
     if search_term or show_only_potential:
         # Create a mask for each column and combine them
         mask = pd.Series(False, index=st.session_state.display_df.index)
