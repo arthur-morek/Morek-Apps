@@ -294,6 +294,8 @@ if uploaded_file:
     if os.path.exists(CACHE_PATH):
         try:
             cached_df = pd.read_csv(CACHE_PATH)
+            # Remove any rows that are just headers
+            cached_df = cached_df[~cached_df["Company"].isin(cached_df.columns)]
             # Update display_df with cached results
             for company in st.session_state.display_df["Company"].unique():
                 if company in cached_df["Company"].values:
@@ -324,6 +326,9 @@ if uploaded_file:
                    "Potential Partner", "Partner Reasoning", "Known Partners", "Similar to Morek", 
                    "Relevant Offerings", "Reasoning"]:
             st.session_state.display_df[col] = ""
+
+    # Update session state with the latest data
+    st.session_state.display_df = st.session_state.display_df.copy()
 
     # --- Search ---
     search_term = st.text_input("🔍 Search by name, job title, company:")
