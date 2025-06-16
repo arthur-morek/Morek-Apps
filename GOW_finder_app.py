@@ -145,7 +145,7 @@ Guidelines:
 - Respond with JSON only
 """
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",  # Using GPT-4 for better accuracy
+                model="gpt-4-turbo-preview",  # Using GPT-4 for better accuracy
                 messages=[
                     {"role": "system", "content": "You are a precise and accurate marine engineering industry labeler. Always respond with valid JSON."},
                     {"role": "user", "content": prompt.strip()}
