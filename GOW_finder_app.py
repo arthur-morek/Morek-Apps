@@ -221,6 +221,36 @@ Guidelines:
 def label_company_cached(company_name):
     return label_company(company_name)
 
+def clean_company_name(company: str) -> str:
+    """Clean and standardize company names."""
+    if not company:
+        return ""
+    
+    # Convert to string and strip whitespace
+    company = str(company).strip()
+    
+    # Remove common suffixes and standardize
+    suffixes = [
+        " ltd", " limited", " llc", " inc", " corporation", " corp", " plc", " gmbh",
+        " pty", " pvt", " private", " company", " co", " group", " holdings", " holding"
+    ]
+    
+    # Convert to lowercase for processing
+    company_lower = company.lower()
+    
+    # Remove suffixes
+    for suffix in suffixes:
+        if company_lower.endswith(suffix):
+            company = company[:-len(suffix)]
+    
+    # Remove extra whitespace and standardize spacing
+    company = " ".join(company.split())
+    
+    # Capitalize each word
+    company = company.title()
+    
+    return company
+
 # Initialize session state for data storage
 if 'labeled_data' not in st.session_state:
     st.session_state.labeled_data = pd.DataFrame()
@@ -240,11 +270,15 @@ if uploaded_file:
     companies = extract_companies(text)
     
     if companies:
-        st.success(f"✅ Found {len(companies)} companies!")
+        # Clean and deduplicate company names
+        cleaned_companies = [clean_company_name(company) for company in companies]
+        unique_companies = list(dict.fromkeys(cleaned_companies))  # Preserve order while removing duplicates
+        
+        st.success(f"✅ Found {len(unique_companies)} unique companies!")
         
         # Create base dataframe
         base_df = pd.DataFrame({
-            "Company": companies,
+            "Company": unique_companies,
             "Industry": "",
             "Company Type": "",
             "Business Model": "",
@@ -275,7 +309,7 @@ if uploaded_file:
         # --- Label Companies ---
         if st.button("Label Companies with GPT"):
             # Get companies that haven't been labeled yet
-            to_label = [c for c in companies if c not in st.session_state.labeled_data["Company"].values]
+            to_label = [c for c in unique_companies if c not in st.session_state.labeled_data["Company"].values]
             
             if not to_label:
                 st.info("All companies have already been labeled. Use the search to view results.")
