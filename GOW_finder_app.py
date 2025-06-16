@@ -221,114 +221,103 @@ Guidelines:
 def label_company_cached(company_name):
     return label_company(company_name)
 
+# Initialize session state for data storage
+if 'labeled_data' not in st.session_state:
+    st.session_state.labeled_data = pd.DataFrame()
+
 # --- File Upload ---
-uploaded_file = st.file_uploader("📎 Upload Delegate List PDF", type=["pdf"])
-
-CACHE_PATH = "gow2025_labeled_companies.csv"
-display_df = pd.DataFrame()  # Safe default
-
-def highlight_partner(val):
-    if val is True or val == True or str(val).lower() == "true":
-        return 'background-color: #d4f7d4; font-weight: bold;'
-    return ''
-
-def safe_display_dataframe(df, use_styling=True):
-    """Safely display a DataFrame with optional styling."""
-    if df.empty:
-        st.info("No data to display.")
-        return
-    
-    # Ensure required columns exist
-    if use_styling and "Potential Partner" not in df.columns:
-        df["Potential Partner"] = False
-    
-    try:
-        if use_styling:
-            styled_df = df.style.applymap(
-                highlight_partner,
-                subset=["Potential Partner"]
-            )
-            st.dataframe(styled_df, use_container_width=True)
-        else:
-            st.dataframe(df, use_container_width=True)
-    except Exception as e:
-        st.warning(f"Error displaying table: {str(e)}")
-        st.dataframe(df, use_container_width=True)  # Fallback to unstyled display
+st.markdown("## 📄 Upload Delegate List")
+uploaded_file = st.file_uploader("Upload PDF", type=['pdf'])
 
 if uploaded_file:
-    # Extract table by layout
-    rows = []
+    # Extract text from PDF
     with pdfplumber.open(uploaded_file) as pdf:
+        text = ""
         for page in pdf.pages:
-            words = page.extract_words()
-            grouped = {}
-            y_tol = 3
+            text += page.extract_text() or ""
 
-            for word in words:
-                y = round(float(word["top"]) / y_tol) * y_tol
-                grouped.setdefault(y, []).append(word)
-
-            for y in sorted(grouped.keys()):
-                line = sorted(grouped[y], key=lambda w: w["x0"])
-                names, jobs, comps = [], [], []
-                for word in line:
-                    x = word["x0"]
-                    if x < 150:
-                        names.append(word["text"])
-                    elif 150 <= x < 350:
-                        jobs.append(word["text"])
-                    else:
-                        comps.append(word["text"])
-                if names and jobs and comps:
-                    first = names[0]
-                    last = " ".join(names[1:]) if len(names) > 1 else ""
-                    job = " ".join(jobs)
-                    comp = " ".join(comps)
-                    rows.append([first, last, job, comp])
-
-    # Initialize the base DataFrame
-    base_df = pd.DataFrame(rows, columns=["First Name", "Last Name", "Job Title", "Company"])
-    st.success(f"✅ Extracted {len(base_df)} delegates.")
-
-    # Try to load cached results
-    if os.path.exists(CACHE_PATH):
-        try:
-            cached_df = pd.read_csv(CACHE_PATH)
-            # Remove any rows that are just headers
-            cached_df = cached_df[~cached_df["Company"].isin(cached_df.columns)]
-            # Update display_df with cached results
+    # Extract companies using GPT
+    companies = extract_companies(text)
+    
+    if companies:
+        st.success(f"✅ Found {len(companies)} companies!")
+        
+        # Create base dataframe
+        base_df = pd.DataFrame({
+            "Company": companies,
+            "Industry": "",
+            "Company Type": "",
+            "Business Model": "",
+            "Company Size": "",
+            "Company Age": "",
+            "Potential Partner": False,
+            "Partner Reasoning": "",
+            "Known Partners": "",
+            "Similar to Morek": "",
+            "Relevant Offerings": "",
+            "Reasoning": ""
+        })
+        
+        # Initialize display_df if not exists
+        if 'display_df' not in st.session_state:
+            st.session_state.display_df = base_df.copy()
+        
+        # Update display_df with any existing labeled data
+        if not st.session_state.labeled_data.empty:
             for company in st.session_state.display_df["Company"].unique():
-                if company in cached_df["Company"].values:
-                    cached_row = cached_df[cached_df["Company"] == company].iloc[0]
+                if company in st.session_state.labeled_data["Company"].values:
+                    cached_row = st.session_state.labeled_data[st.session_state.labeled_data["Company"] == company].iloc[0]
                     mask = st.session_state.display_df["Company"] == company
                     for col in cached_row.index:
                         if col != "Company":
-                            # Convert NaN to empty string for string columns
-                            if pd.api.types.is_string_dtype(st.session_state.display_df[col]):
-                                st.session_state.display_df.loc[mask, col] = cached_row[col] if pd.notna(cached_row[col]) else ""
-                            # Convert NaN to False for boolean columns
-                            elif col == "Potential Partner":
-                                st.session_state.display_df.loc[mask, col] = bool(cached_row[col]) if pd.notna(cached_row[col]) else False
-                            # Keep NaN for numeric columns
-                            else:
-                                st.session_state.display_df.loc[mask, col] = cached_row[col]
-        except Exception as e:
-            st.error(f"Error loading cached data: {str(e)}")
-            cached_df = pd.DataFrame()
-    else:
-        cached_df = pd.DataFrame()
+                            st.session_state.display_df.loc[mask, col] = cached_row[col]
 
-    # Initialize session state for display_df if it doesn't exist
-    if 'display_df' not in st.session_state:
-        st.session_state.display_df = base_df.copy()
-        # Add default columns with empty strings instead of NaN
-        for col in ["Industry", "Company Type", "Business Model", "Company Size", "Company Age", 
-                   "Potential Partner", "Partner Reasoning", "Known Partners", "Similar to Morek", 
-                   "Relevant Offerings", "Reasoning"]:
-            st.session_state.display_df[col] = ""
+        # --- Label Companies ---
+        if st.button("Label Companies with GPT"):
+            # Get companies that haven't been labeled yet
+            to_label = [c for c in companies if c not in st.session_state.labeled_data["Company"].values]
+            
+            if not to_label:
+                st.info("All companies have already been labeled. Use the search to view results.")
+                st.stop()
 
-    # Update session state with the latest data
-    st.session_state.display_df = st.session_state.display_df.copy()
+            # Process companies in batches
+            batch_size = 5 if test_mode else 10
+            total = len(to_label)
+            
+            with st.spinner("Processing companies..."):
+                for i in range(0, total, batch_size):
+                    batch = to_label[i:i + batch_size]
+                    new_labeled = []
+                    
+                    for company in batch:
+                        try:
+                            result = label_company(company)
+                            result["Company"] = company
+                            new_labeled.append(result)
+                        except Exception as e:
+                            st.error(f"Error processing {company}: {str(e)}")
+                    
+                    if new_labeled:
+                        # Update session state with new results
+                        new_df = pd.DataFrame(new_labeled)
+                        st.session_state.labeled_data = pd.concat([st.session_state.labeled_data, new_df], ignore_index=True)
+                        st.session_state.labeled_data = st.session_state.labeled_data.drop_duplicates(subset=["Company"], keep="last")
+                        
+                        # Update display_df
+                        for result in new_labeled:
+                            mask = st.session_state.display_df["Company"] == result["Company"]
+                            for col in result.keys():
+                                if col != "Company":
+                                    st.session_state.display_df.loc[mask, col] = result[col]
+                        
+                        st.success(f"✅ Processed {len(new_labeled)} of {total} companies")
+                    
+                    # Small delay between batches
+                    time.sleep(2)
+            
+            st.success("🎉 All companies processed!")
+            st.rerun()
 
     # --- Search ---
     search_term = st.text_input("🔍 Search by name, job title, company:")
@@ -357,145 +346,6 @@ if uploaded_file:
         safe_display_dataframe(st.session_state.display_df, use_styling=True)
 
     test_mode = st.toggle("🧪 Test Mode (Process only first 5 companies)", value=True)
-    
-    def process_company_batch(companies: List[str], progress_bar, total_companies: int) -> List[Dict[str, Any]]:
-        results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            # Create a dictionary to store futures
-            future_to_company = {
-                executor.submit(label_company_cached, company): company 
-                for company in companies
-            }
-            
-            # Process completed futures as they come in
-            for i, future in enumerate(concurrent.futures.as_completed(future_to_company)):
-                company = future_to_company[future]
-                try:
-                    result = future.result()
-                    result["Company"] = company
-                    results.append(result)
-                    # Update progress
-                    progress_bar.progress(min(1.0, (i + 1) / total_companies))
-                except Exception as e:
-                    st.error(f"Error processing {company}: {str(e)}")
-                    results.append({
-                        "Company": company,
-                        "industry": "Error",
-                        "company_type": "Error",
-                        "business_model": "Error",
-                        "company_size": "Error",
-                        "company_age": "Error",
-                        "potential_partner": False,
-                        "partner_reasoning": str(e),
-                        "known_partners": [],
-                        "similar_to_morek": [],
-                        "relevant_offerings": [],
-                        "reasoning": str(e)
-                    })
-        return results
-
-    if st.button("🔍 Label Companies with GPT"):
-        st.info("Calling GPT to label each unique company...")
-        progress = st.progress(0)
-        result_map = {}
-        companies = base_df["Company"].unique()
-        
-        if test_mode:
-            companies = companies[:5]
-            st.warning("🧪 Test Mode: Processing only first 5 companies")
-
-        # Only process companies not already labeled
-        already_labeled = set()
-        if not cached_df.empty:
-            # Check if companies have been properly labeled (not just present in CSV)
-            for _, row in cached_df.iterrows():
-                if (row.get("Industry") and row.get("Industry") != "Unknown" and 
-                    row.get("Company Type") and row.get("Company Type") != "Unknown"):
-                    already_labeled.add(row["Company"])
-
-        to_label = [c for c in companies if c not in already_labeled]
-
-        if not to_label:
-            st.info("All companies have already been labeled. Use the search to view results.")
-            st.stop()
-
-        # Custom loading spinner in main area
-        loading_placeholder = st.empty()
-        batch_info_placeholder = st.empty()
-        success_placeholder = st.empty()
-        
-        loading_placeholder.markdown(
-            """
-            <div style='display: flex; align-items: center; gap: 0.5em;'>
-                <span style='font-size:2em;'>⏳</span>
-                <span style='font-size:1.2em;'>Labeling companies in parallel, please wait...</span>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        # Process companies in parallel batches
-        batch_size = 10  # Process 10 companies at a time
-        total = len(to_label)
-        new_labeled = []
-        
-        for batch_start in range(0, total, batch_size):
-            batch = to_label[batch_start:batch_start+batch_size]
-            batch_info_placeholder.info(f"Processing batch {batch_start//batch_size + 1} of {(total + batch_size - 1)//batch_size}")
-            
-            # Process the batch in parallel
-            batch_results = process_company_batch(batch, progress, total)
-            
-            # Update result map and new_labeled list
-            for result in batch_results:
-                company = result["Company"]
-                result_map[company] = result
-                new_labeled.append(result)
-                
-                # Update display_df immediately
-                mask = st.session_state.display_df["Company"] == company
-                st.session_state.display_df.loc[mask, "Industry"] = result.get("industry", "")
-                st.session_state.display_df.loc[mask, "Company Type"] = result.get("company_type", "")
-                st.session_state.display_df.loc[mask, "Business Model"] = result.get("business_model", "")
-                st.session_state.display_df.loc[mask, "Company Size"] = result.get("company_size", "")
-                st.session_state.display_df.loc[mask, "Company Age"] = result.get("company_age", "")
-                st.session_state.display_df.loc[mask, "Potential Partner"] = result.get("potential_partner", False)
-                st.session_state.display_df.loc[mask, "Partner Reasoning"] = result.get("partner_reasoning", "")
-                st.session_state.display_df.loc[mask, "Known Partners"] = ", ".join(result.get("known_partners", []))
-                st.session_state.display_df.loc[mask, "Similar to Morek"] = ", ".join([
-                    c for c in result.get("similar_to_morek", [])
-                    if c.strip().lower() != "morek engineering"
-                ])
-                st.session_state.display_df.loc[mask, "Relevant Offerings"] = ", ".join(result.get("relevant_offerings", []))
-                st.session_state.display_df.loc[mask, "Reasoning"] = result.get("reasoning", "")
-            
-            # Save progress after each batch
-            if batch_results:
-                # Combine with existing cached data
-                if os.path.exists(CACHE_PATH):
-                    existing_df = pd.read_csv(CACHE_PATH)
-                    combined_df = pd.concat([existing_df, pd.DataFrame(new_labeled)], ignore_index=True)
-                    # Remove duplicates keeping the latest version
-                    combined_df = combined_df.drop_duplicates(subset=["Company"], keep="last")
-                else:
-                    combined_df = pd.DataFrame(new_labeled)
-                
-                combined_df.to_csv(CACHE_PATH, index=False)
-                success_placeholder.success(f"✅ Processed {len(new_labeled)} of {total} companies")
-            
-            # Small delay between batches to prevent rate limiting
-            time.sleep(1)
-
-        loading_placeholder.empty()  # Remove the loading spinner
-        batch_info_placeholder.empty()  # Remove the batch info
-
-        if len(new_labeled) < total:
-            st.warning(f"Labeling incomplete: {len(new_labeled)} of {total} companies processed. You can rerun to continue.")
-        else:
-            st.success("✅ Labeling complete.")
-
-        # Force a rerun to update the display
-        st.rerun()
 
     # --- Visualization Tabs ---
     tab1, tab2, tab3 = st.tabs(["Summary Graphs", "Company Cards", "Full Table"])
@@ -504,39 +354,7 @@ if uploaded_file:
     with tab1:
         st.header("Summary Graphs")
         # Load complete dataset for visualization
-        if os.path.exists(CACHE_PATH):
-            try:
-                complete_df = pd.read_csv(CACHE_PATH)
-                # Ensure all required columns exist
-                required_columns = [
-                    "First Name", "Last Name", "Job Title", "Company",
-                    "Industry", "Company Type", "Business Model", "Company Size",
-                    "Company Age", "Potential Partner", "Partner Reasoning",
-                    "Known Partners", "Similar to Morek", "Relevant Offerings", "Reasoning"
-                ]
-                
-                # Add missing columns with default values
-                for col in required_columns:
-                    if col not in complete_df.columns:
-                        if col == "Potential Partner":
-                            complete_df[col] = False
-                        elif col in ["Known Partners", "Similar to Morek", "Relevant Offerings"]:
-                            complete_df[col] = ""
-                        else:
-                            complete_df[col] = ""
-
-                # Merge with original data to ensure we have all companies
-                complete_df = pd.merge(
-                    st.session_state.display_df[["First Name", "Last Name", "Job Title", "Company"]],
-                    complete_df,
-                    on="Company",
-                    how="left"
-                )
-            except Exception as e:
-                st.error(f"Error loading cached data: {str(e)}")
-                complete_df = st.session_state.display_df
-        else:
-            complete_df = st.session_state.display_df
+        complete_df = st.session_state.display_df
 
         if not complete_df.empty:
             # Industry distribution
