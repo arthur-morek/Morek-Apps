@@ -107,7 +107,7 @@ offerings_list = [
     "marine operations planning"
 ]
 
-client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
+client = openai.OpenAI(api_key=st.secrets["openai_api_key"])#
 
 def label_company(company_name):
     max_retries = 3
@@ -290,15 +290,6 @@ if uploaded_file:
     base_df = pd.DataFrame(rows, columns=["First Name", "Last Name", "Job Title", "Company"])
     st.success(f"✅ Extracted {len(base_df)} delegates.")
 
-    # Initialize session state for display_df if it doesn't exist
-    if 'display_df' not in st.session_state:
-        st.session_state.display_df = base_df.copy()
-        # Add default columns
-        for col in ["Industry", "Company Type", "Business Model", "Company Size", "Company Age", 
-                   "Potential Partner", "Partner Reasoning", "Known Partners", "Similar to Morek", 
-                   "Relevant Offerings", "Reasoning"]:
-            st.session_state.display_df[col] = ""
-
     # Try to load cached results
     if os.path.exists(CACHE_PATH):
         try:
@@ -310,12 +301,29 @@ if uploaded_file:
                     mask = st.session_state.display_df["Company"] == company
                     for col in cached_row.index:
                         if col != "Company":
-                            st.session_state.display_df.loc[mask, col] = cached_row[col]
+                            # Convert NaN to empty string for string columns
+                            if pd.api.types.is_string_dtype(st.session_state.display_df[col]):
+                                st.session_state.display_df.loc[mask, col] = cached_row[col] if pd.notna(cached_row[col]) else ""
+                            # Convert NaN to False for boolean columns
+                            elif col == "Potential Partner":
+                                st.session_state.display_df.loc[mask, col] = bool(cached_row[col]) if pd.notna(cached_row[col]) else False
+                            # Keep NaN for numeric columns
+                            else:
+                                st.session_state.display_df.loc[mask, col] = cached_row[col]
         except Exception as e:
             st.error(f"Error loading cached data: {str(e)}")
             cached_df = pd.DataFrame()
     else:
         cached_df = pd.DataFrame()
+
+    # Initialize session state for display_df if it doesn't exist
+    if 'display_df' not in st.session_state:
+        st.session_state.display_df = base_df.copy()
+        # Add default columns with empty strings instead of NaN
+        for col in ["Industry", "Company Type", "Business Model", "Company Size", "Company Age", 
+                   "Potential Partner", "Partner Reasoning", "Known Partners", "Similar to Morek", 
+                   "Relevant Offerings", "Reasoning"]:
+            st.session_state.display_df[col] = ""
 
     # --- Search ---
     search_term = st.text_input("🔍 Search by name, job title, company:")
