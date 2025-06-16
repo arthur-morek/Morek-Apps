@@ -392,7 +392,14 @@ if uploaded_file:
             st.warning("🧪 Test Mode: Processing only first 5 companies")
 
         # Only process companies not already labeled
-        already_labeled = set(cached_df["Company"]) if not cached_df.empty else set()
+        already_labeled = set()
+        if not cached_df.empty:
+            # Check if companies have been properly labeled (not just present in CSV)
+            for _, row in cached_df.iterrows():
+                if (row.get("Industry") and row.get("Industry") != "Unknown" and 
+                    row.get("Company Type") and row.get("Company Type") != "Unknown"):
+                    already_labeled.add(row["Company"])
+
         to_label = [c for c in companies if c not in already_labeled]
 
         if not to_label:
