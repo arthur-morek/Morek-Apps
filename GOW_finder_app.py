@@ -221,6 +221,38 @@ Guidelines:
 def label_company_cached(company_name):
     return label_company(company_name)
 
+def extract_companies(text: str) -> List[str]:
+    """Extract company names from PDF text using GPT."""
+    try:
+        prompt = f"""
+Extract a list of company names from the following text. Return only the company names, one per line.
+Ignore any other information like names, job titles, or other text.
+
+Text:
+{text}
+
+Return only the company names, one per line. Do not include any other text or explanation.
+"""
+        response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": "You are a precise company name extractor. Return only company names, one per line."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1
+        )
+        
+        # Extract company names from response
+        companies = [
+            line.strip() for line in response.choices[0].message.content.split('\n')
+            if line.strip() and not line.strip().startswith(('Here', 'The', 'I', 'This'))
+        ]
+        
+        return companies
+    except Exception as e:
+        st.error(f"Error extracting companies: {str(e)}")
+        return []
+
 def clean_company_name(company: str) -> str:
     """Clean and standardize company names."""
     if not company:
